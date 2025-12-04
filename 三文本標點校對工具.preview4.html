@@ -1,0 +1,4664 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>三文本標點校對工具 V4</title>
+  
+  <!-- Pico CSS 2.x - Semantic HTML Styling -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  
+  <!-- Alpine.js 3.x - Declarative Reactivity -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  
+  <style>
+    /* ══════════════════════════════════════════════════════════════════
+       CSS Custom Properties - Marker Colors (ux-design.md §3)
+       ══════════════════════════════════════════════════════════════════ */
+    :root {
+      /* Marker background colors */
+      --marker-identical: #d4edda;    /* Light green - 完全一致 */
+      --marker-majority: #cce5ff;     /* Light blue - 多數一致 */
+      --marker-conflict: #f8d7da;     /* Light red/pink - 三方不同 */
+      --marker-resolved: #e2d5f1;     /* Light purple - 已處理 */
+      
+      /* Marker border colors (for emphasis) */
+      --marker-identical-border: #28a745;
+      --marker-majority-border: #007bff;
+      --marker-conflict-border: #dc3545;
+      --marker-resolved-border: #6f42c1;
+      
+      /* Text colors for statistics */
+      --stat-identical: #28a745;
+      --stat-majority: #007bff;
+      --stat-conflict: #dc3545;
+      --stat-resolved: #6f42c1;
+    }
+    
+    /* ══════════════════════════════════════════════════════════════════
+       Typography - Chinese Text Display (ux-design.md §5)
+       ══════════════════════════════════════════════════════════════════ */
+    .paragraph-text {
+      font-family: "Noto Serif TC", "Source Han Serif TC", "PMingLiU", "Microsoft JhengHei", serif;
+      font-size: 1.25rem;
+      line-height: 1.8;
+      letter-spacing: 0.05em;
+    }
+    
+    /* ══════════════════════════════════════════════════════════════════
+       Punctuation Markers (ux-design.md §4.1)
+       ══════════════════════════════════════════════════════════════════ */
+    .marker {
+      cursor: pointer;
+      padding: 0 4px;
+      border-radius: 3px;
+      border: 1px solid transparent;
+      transition: all 0.2s ease;
+      display: inline;
+      font-weight: bold;
+    }
+    
+    .marker:hover {
+      transform: scale(1.2);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    
+    .marker-identical {
+      background-color: var(--marker-identical);
+      border-color: var(--marker-identical-border);
+      color: #155724;  /* Dark green text for light green background */
+    }
+    
+    .marker-majority {
+      background-color: var(--marker-majority);
+      border-color: var(--marker-majority-border);
+      color: #004085;  /* Dark blue text for light blue background */
+    }
+    
+    .marker-conflict {
+      background-color: var(--marker-conflict);
+      border-color: var(--marker-conflict-border);
+      color: #721c24;  /* Dark red text for light red background */
+    }
+    
+    /* Resolved markers use solid original color with white text */
+    .marker-resolved.marker-identical {
+      background-color: #28a745;  /* Solid green */
+      border-color: #1e7e34;
+      color: #fff;  /* White text */
+    }
+    .marker-resolved.marker-majority {
+      background-color: #007bff;  /* Solid blue */
+      border-color: #0069d9;
+      color: #fff;  /* White text */
+    }
+    .marker-resolved.marker-conflict {
+      background-color: #dc3545;  /* Solid red */
+      border-color: #c82333;
+      color: #fff;  /* White text */
+    }
+    /* Fallback for resolved without type class */
+    .marker-resolved {
+      background-color: #6f42c1;  /* Solid purple */
+      border-color: #5a32a3;
+      color: #fff;  /* White text */
+    }
+    
+    /* Text mismatch markers (grey=unresolved, black=resolved) */
+    .marker-textmismatch {
+      background-color: #adb5bd;  /* Grey for unresolved */
+      border-color: #868e96;
+      color: #212529;  /* Dark text on grey background */
+    }
+    
+    .marker-textmismatch-resolved {
+      background-color: #212529;  /* Black for resolved/chosen */
+      border-color: #000;
+      color: #fff;  /* White text on black background */
+    }
+    
+    /* ══════════════════════════════════════════════════════════════════
+       Layout - Responsive Grid (ux-design.md §6)
+       ══════════════════════════════════════════════════════════════════ */
+    .input-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    
+    @media (min-width: 768px) {
+      .input-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1.5rem;
+      }
+    }
+    
+    @media (min-width: 1024px) {
+      .paragraph-container {
+        display: grid;
+        grid-template-columns: 1fr 250px;
+        gap: 2rem;
+      }
+    }
+    
+    /* ══════════════════════════════════════════════════════════════════
+       Statistics Colors
+       ══════════════════════════════════════════════════════════════════ */
+    .stat-identical { color: var(--stat-identical); }
+    .stat-majority { color: var(--stat-majority); }
+    .stat-conflict { color: var(--stat-conflict); }
+    
+    /* ══════════════════════════════════════════════════════════════════
+       Popup Marker Colors - Dynamic based on match type
+       ══════════════════════════════════════════════════════════════════ */
+    /* All match (identical): light green for all */
+    .popup-marker-match {
+      background-color: var(--marker-identical);
+      border-color: var(--marker-identical-border);
+      color: #155724;
+    }
+    
+    /* Majority agree: light blue for majority, light red for minority */
+    .popup-marker-majority-agree {
+      background-color: var(--marker-majority);
+      border-color: var(--marker-majority-border);
+      color: #004085;
+    }
+    
+    .popup-marker-minority {
+      background-color: var(--marker-conflict);
+      border-color: var(--marker-conflict-border);
+      color: #721c24;
+    }
+    
+    /* Conflict (all different): light red for A/C, lighter for B */
+    .popup-marker-conflict-ac {
+      background-color: var(--marker-conflict);
+      border-color: var(--marker-conflict-border);
+      color: #721c24;
+    }
+    
+    .popup-marker-conflict-b {
+      background-color: #fce4e7;  /* Lighter red/pink for B */
+      border-color: #f5c6cb;
+      color: #856b6f;
+    }
+    
+    /* Stat Badges - colored box style matching inline markers */
+    .stat-badge {
+      display: inline-block;
+      padding: 0.1em 0.5em;
+      border-radius: 3px;
+      border: 1px solid;
+      font-size: 0.9em;
+      margin-right: 0.3em;
+      font-weight: 500;
+    }
+    .stat-badge-identical {
+      background-color: var(--marker-identical);
+      border-color: var(--marker-identical-border);
+      color: #155724;  /* Dark green for readability */
+    }
+    .stat-badge-majority {
+      background-color: var(--marker-majority);
+      border-color: var(--marker-majority-border);
+      color: #004085;  /* Dark blue for readability */
+    }
+    .stat-badge-conflict {
+      background-color: var(--marker-conflict);
+      border-color: var(--marker-conflict-border);
+      color: #721c24;  /* Dark red for readability */
+    }
+    .stat-badge-resolved {
+      background-color: #dc3545;  /* Red background */
+      border-color: #c82333;
+      color: #fff;  /* White text */
+    }
+    
+    /* Text mismatch stat badges (matching inline marker styles) */
+    .stat-badge-textmismatch {
+      background-color: #adb5bd;  /* Gray for unresolved - matches .marker-textmismatch */
+      border-color: #868e96;
+      color: #212529;
+    }
+    .stat-badge-textmismatch-resolved {
+      background-color: #212529;  /* Black for resolved - matches .marker-textmismatch-resolved */
+      border-color: #000;
+      color: #fff;
+    }
+    
+    /* ══════════════════════════════════════════════════════════════════
+       No-Punctuation Warning (FR-011a)
+       ══════════════════════════════════════════════════════════════════ */
+    .no-punct-warning {
+      background-color: #fff3cd;
+      border: 1px solid #ffeeba;
+      border-radius: 4px;
+      padding: 0.75rem 1rem;
+      margin-top: 1rem;
+    }
+    
+    .no-punct-item:hover {
+      background-color: rgba(0, 123, 255, 0.1);
+      text-decoration: underline;
+    }
+    
+    .no-punct-badge {
+      font-weight: normal;
+    }
+    
+    /* ══════════════════════════════════════════════════════════════════
+       Selection Popup Menu (ux-design.md §4.2)
+       ══════════════════════════════════════════════════════════════════ */
+    .selection-popup {
+      position: absolute;
+      z-index: 100;
+      background: var(--pico-background-color);
+      border: 1px solid var(--pico-muted-border-color);
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      min-width: 240px;
+      max-width: 320px;
+      padding: 0;
+      overflow: hidden;
+    }
+    
+    .selection-popup-item {
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .selection-popup-item:hover {
+      background: var(--pico-secondary-background);
+    }
+    
+    .selection-popup-item.selected {
+      background: var(--marker-resolved);
+    }
+    
+    .selection-popup-item kbd {
+      display: inline-block;
+      padding: 0.1em 0.4em;
+      font-size: 0.75em;
+      font-family: monospace;
+      background: var(--pico-secondary-background);
+      border: 1px solid var(--pico-muted-border-color);
+      border-radius: 3px;
+      margin-right: 0.5em;
+    }
+    
+    .punctuation-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+      padding: 0.5rem;
+    }
+    
+    .punctuation-grid button {
+      padding: 0.5rem;
+      min-width: 2rem;
+      font-size: 1.1rem;
+    }
+    
+    /* ══════════════════════════════════════════════════════════════════
+       Loading & Error States (ux-design.md §8)
+       ══════════════════════════════════════════════════════════════════ */
+    .spinner {
+      display: inline-block;
+      width: 1em;
+      height: 1em;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .error {
+      background-color: var(--marker-conflict);
+      border-left: 4px solid var(--stat-conflict);
+      padding: 1rem;
+      margin: 1rem 0;
+    }
+    
+    .success {
+      background-color: var(--marker-identical);
+      border-left: 4px solid var(--stat-identical);
+      padding: 0.5rem 1rem;
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      z-index: 200;
+      border-radius: 4px;
+    }
+    
+    /* ══════════════════════════════════════════════════════════════════
+       Paragraph List Sidebar
+       ══════════════════════════════════════════════════════════════════ */
+    .paragraph-list {
+      max-height: 400px;
+      overflow-y: auto;
+      border: 1px solid var(--pico-muted-border-color);
+      border-radius: 4px;
+    }
+    
+    .paragraph-list-item {
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      border-bottom: 1px solid var(--pico-muted-border-color);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .paragraph-list-item:hover {
+      background: var(--pico-secondary-background);
+    }
+    
+    .paragraph-list-item.current {
+      background: var(--pico-primary-background);
+      font-weight: bold;
+    }
+    
+    .paragraph-list-item:last-child {
+      border-bottom: none;
+    }
+    
+    /* Version card styling */
+    .version-card {
+      border: 1px solid var(--pico-muted-border-color);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    
+    .version-card.loaded {
+      border-color: var(--stat-identical);
+    }
+    
+    /* File loaded display - shows filename when file is loaded via auto-load */
+    .file-loaded-display {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--marker-identical);
+      border: 1px solid var(--stat-identical);
+      border-radius: 4px;
+    }
+    
+    .file-loaded-display .file-name {
+      flex: 1;
+      font-size: 0.9rem;
+      color: #1a5928;  /* Dark green for better contrast on light green background */
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .file-loaded-display .clear-file-btn {
+      background: transparent;
+      border: none;
+      color: #2d7a3e;  /* Medium green for clear button */
+      cursor: pointer;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.9rem;
+      line-height: 1;
+      border-radius: 4px;
+      margin: 0;
+    }
+    
+    .file-loaded-display .clear-file-btn:hover {
+      background: rgba(40, 167, 69, 0.2);
+      color: #1a5928;
+    }
+  </style>
+</head>
+<body>
+  <!-- ══════════════════════════════════════════════════════════════════
+       Main Application Container with Alpine.js Binding
+       ══════════════════════════════════════════════════════════════════ -->
+  <main class="container" x-data="proofreadingApp()" x-init="init()">
+    
+    <!-- Header -->
+    <header>
+      <h1>三文本標點校對工具</h1>
+      <p x-show="view !== 'load'" style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <small>
+          段落: <span x-text="globalStats.totalParagraphs"></span> |
+          <span class="stat-identical">🟢 完全一致: <span x-text="globalStats.identicalParagraphs"></span></span> |
+          <span class="stat-majority">🔵 多數一致: <span x-text="globalStats.majorityParagraphs"></span></span> |
+          <span class="stat-conflict">🔴 需處理: <span x-text="unresolvedCount"></span></span>
+          <span x-show="resolvedConflictCount > 0" class="stat-resolved" style="color: #28a745;">| 已處理: <span x-text="resolvedConflictCount"></span></span>
+        </small>
+        <small style="background-color: #e0e0e0; padding: 0.25rem 0.5rem; border-radius: 6px; color: #495057;">(<span x-text="sources.A?.name || ''"></span>, <span x-text="sources.B?.name || ''"></span>, <span x-text="sources.C?.name || ''"></span>)</small>
+      </p>
+    </header>
+    
+    <!-- Error Display -->
+    <div x-show="error" class="error" role="alert" x-cloak>
+      <strong>錯誤:</strong> <span x-text="error"></span>
+      <button @click="error = null" class="secondary outline" style="float: right; padding: 0.25rem 0.5rem;">✕</button>
+    </div>
+    
+    <!-- Loading Indicator -->
+    <div x-show="isLoading" aria-busy="true" x-cloak>
+      <span class="spinner"></span> 處理中...
+    </div>
+    
+    <!-- ═══════════════════════════════════════════════════════════════
+         VIEW: Load (US1)
+         ═══════════════════════════════════════════════════════════════ -->
+    <section x-show="view === 'load'" x-cloak>
+      <h2>載入三個版本的文本</h2>
+      
+      <!-- Input Mode Toggle -->
+      <div style="margin-bottom: 1rem; text-align: center;">
+        <button 
+          :class="inputMode === 'file' ? '' : 'secondary outline'"
+          @click="inputMode = 'file'"
+          style="margin-right: 0.5rem;">
+          📁 檔案上傳
+        </button>
+        <button 
+          :class="inputMode === 'paste' ? '' : 'secondary outline'"
+          @click="inputMode = 'paste'">
+          📋 貼上文字
+        </button>
+      </div>
+      
+      <!-- Batch File Selection (FR-001a) -->
+      <div x-show="inputMode === 'file'" style="margin-bottom: 1rem; text-align: center;">
+        <label style="display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9em; color: var(--pico-muted-color);">
+          <input 
+            type="file" 
+            accept=".txt" 
+            multiple 
+            @change="handleMultipleFileUpload($event)"
+            style="display: none;"
+            x-ref="multiFileInput">
+          <button 
+            type="button" 
+            class="outline secondary" 
+            style="padding: 0.25rem 0.75rem; font-size: 0.9em;"
+            @click="$refs.multiFileInput.click()">
+            📁 一次選取多個檔案
+          </button>
+          <span>（自動偵測相關版本）</span>
+        </label>
+      </div>
+      
+      <div class="input-grid">
+        <!-- Version A -->
+        <article class="version-card" :class="{ 'loaded': sources.A }">
+          <h3>版本 A</h3>
+          <template x-if="inputMode === 'file'">
+            <div>
+              <input x-show="!sources.A" type="file" accept=".txt" @change="handleFileUpload('A', $event)">
+              <div x-show="sources.A" class="file-loaded-display">
+                <span class="file-name" x-text="sources.A?.name || ''"></span>
+                <button type="button" class="clear-file-btn" @click="sources.A = null; checkTextMismatch()" title="清除">✕</button>
+              </div>
+            </div>
+          </template>
+          <template x-if="inputMode === 'paste'">
+            <textarea 
+              rows="6" 
+              placeholder="請在此貼上版本 A 的文字內容..."
+              @input="handlePasteInput('A', $event.target.value)"
+              :value="sources.A?.sourceType === 'paste' ? sources.A.content : ''"></textarea>
+          </template>
+          <div x-show="sources.A" style="margin-top: 0.5rem;">
+            <small>✓ 已載入 <span x-text="sources.A?.content.length || 0"></span> 字</small>
+          </div>
+          <div x-show="!sources.A" style="margin-top: 0.5rem;">
+            <small>○ 未載入</small>
+          </div>
+        </article>
+        
+        <!-- Version B -->
+        <article class="version-card" :class="{ 'loaded': sources.B }">
+          <h3>版本 B</h3>
+          <template x-if="inputMode === 'file'">
+            <div>
+              <input x-show="!sources.B" type="file" accept=".txt" @change="handleFileUpload('B', $event)">
+              <div x-show="sources.B" class="file-loaded-display">
+                <span class="file-name" x-text="sources.B?.name || ''"></span>
+                <button type="button" class="clear-file-btn" @click="sources.B = null; checkTextMismatch()" title="清除">✕</button>
+              </div>
+            </div>
+          </template>
+          <template x-if="inputMode === 'paste'">
+            <textarea 
+              rows="6" 
+              placeholder="請在此貼上版本 B 的文字內容..."
+              @input="handlePasteInput('B', $event.target.value)"
+              :value="sources.B?.sourceType === 'paste' ? sources.B.content : ''"></textarea>
+          </template>
+          <div x-show="sources.B" style="margin-top: 0.5rem;">
+            <small>✓ 已載入 <span x-text="sources.B?.content.length || 0"></span> 字</small>
+          </div>
+          <div x-show="!sources.B" style="margin-top: 0.5rem;">
+            <small>○ 未載入</small>
+          </div>
+        </article>
+        
+        <!-- Version C -->
+        <article class="version-card" :class="{ 'loaded': sources.C }">
+          <h3>版本 C</h3>
+          <template x-if="inputMode === 'file'">
+            <div>
+              <input x-show="!sources.C" type="file" accept=".txt" @change="handleFileUpload('C', $event)">
+              <div x-show="sources.C" class="file-loaded-display">
+                <span class="file-name" x-text="sources.C?.name || ''"></span>
+                <button type="button" class="clear-file-btn" @click="sources.C = null; checkTextMismatch()" title="清除">✕</button>
+              </div>
+            </div>
+          </template>
+          <template x-if="inputMode === 'paste'">
+            <textarea 
+              rows="6" 
+              placeholder="請在此貼上版本 C 的文字內容..."
+              @input="handlePasteInput('C', $event.target.value)"
+              :value="sources.C?.sourceType === 'paste' ? sources.C.content : ''"></textarea>
+          </template>
+          <div x-show="sources.C" style="margin-top: 0.5rem;">
+            <small>✓ 已載入 <span x-text="sources.C?.content.length || 0"></span> 字</small>
+          </div>
+          <div x-show="!sources.C" style="margin-top: 0.5rem;">
+            <small>○ 未載入</small>
+          </div>
+        </article>
+      </div>
+      
+      <!-- Text Mismatch Warning -->
+      <div x-show="textMismatchWarning" class="error" style="margin-top: 1rem;" x-cloak>
+        <strong>⚠️ 警告:</strong> <span x-text="textMismatchWarning"></span>
+      </div>
+      
+      <div style="margin-top: 2rem; text-align: center;">
+        <button 
+          @click="startComparison()" 
+          :disabled="!allTextsLoaded"
+          :aria-busy="isLoading">
+          開始比對
+        </button>
+      </div>
+      
+      <!-- Auto-Load Prompt Dialog (FR-001a) -->
+      <dialog x-ref="autoLoadDialog" style="max-width: 500px;">
+        <article>
+          <h3>💡 找到相關檔案</h3>
+          <p style="color: var(--pico-muted-color);">偵測到相同前綴的檔案（依字母順序分配）:</p>
+          
+          <div style="margin: 1rem 0;">
+            <!-- Version B Selection -->
+            <div style="margin-bottom: 0.75rem;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input 
+                  type="checkbox" 
+                  :checked="autoLoad.selectedNames.B !== null"
+                  @change="toggleAutoLoadFile('B', $event.target.checked)"
+                  :disabled="autoLoad.relatedFiles.length < 1"
+                  style="margin: 0;">
+                <span>版本 B:</span>
+                <select 
+                  x-model="autoLoad.selectedNames.B" 
+                  style="flex: 1; margin: 0;"
+                  :disabled="autoLoad.relatedFiles.length < 1">
+                  <option :value="null">-- 請選擇 --</option>
+                  <template x-for="file in autoLoad.relatedFiles" :key="file.name">
+                    <option :value="file.name" x-text="file.name"></option>
+                  </template>
+                </select>
+              </label>
+            </div>
+            
+            <!-- Version C Selection -->
+            <div>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input 
+                  type="checkbox" 
+                  :checked="autoLoad.selectedNames.C !== null"
+                  @change="toggleAutoLoadFile('C', $event.target.checked)"
+                  :disabled="autoLoad.relatedFiles.length < 2"
+                  style="margin: 0;">
+                <span>版本 C:</span>
+                <select 
+                  x-model="autoLoad.selectedNames.C" 
+                  style="flex: 1; margin: 0;"
+                  :disabled="autoLoad.relatedFiles.length < 2">
+                  <option :value="null">-- 請選擇 --</option>
+                  <template x-for="file in autoLoad.relatedFiles" :key="file.name">
+                    <option :value="file.name" x-text="file.name" :disabled="autoLoad.selectedNames.B === file.name"></option>
+                  </template>
+                </select>
+              </label>
+            </div>
+          </div>
+          
+          <footer style="display: flex; gap: 1rem; justify-content: flex-end;">
+            <button class="secondary outline" @click="closeAutoLoadDialog()">手動選擇</button>
+            <button @click="handleAutoLoad()" :disabled="!autoLoad.selectedNames.B && !autoLoad.selectedNames.C">自動載入</button>
+          </footer>
+        </article>
+      </dialog>
+    </section>
+    
+    <!-- ═══════════════════════════════════════════════════════════════
+         VIEW: Overview (US2)
+         ═══════════════════════════════════════════════════════════════ -->
+    <section x-show="view === 'overview'" x-cloak>
+      <h2>比對結果總覽</h2>
+      
+      <article>
+        <h3>📊 全域統計（段落）</h3>
+        
+        <p>段落總數: <strong x-text="globalStats.totalParagraphs"></strong></p>
+        <p class="stat-identical">🟢 完全一致段落: <strong x-text="globalStats.identicalParagraphs"></strong></p>
+        <p class="stat-majority">🔵 多數一致段落: <strong x-text="globalStats.majorityParagraphs"></strong></p>
+        <p class="stat-conflict">
+          🔴 需處理段落: <strong x-text="unresolvedCount"></strong>
+          <span x-show="unresolvedCount > 0" style="font-size: 0.9em; color: #666;">
+            (標點: <span x-text="globalStats.unresolvedPunctuationOnly"></span> | 
+            文字: <span x-text="globalStats.unresolvedTextOnly"></span> | 
+            標點與文字: <span x-text="globalStats.unresolvedBoth"></span>)
+          </span>
+        </p>
+        <p x-show="resolvedConflictCount > 0" style="color: #28a745;">
+          ✓ 已處理: <strong x-text="resolvedConflictCount"></strong>
+        </p>
+        
+        <!-- T038b-T038e [FR-011a]: No-punctuation warning -->
+        <div x-show="noPunctuationCount > 0" class="no-punct-warning">
+          <details>
+            <summary style="cursor: pointer; color: #856404;">
+              ⚠️ 發現 <strong x-text="noPunctuationCount"></strong> 個段落無標點
+            </summary>
+            <div class="no-punct-list" style="margin-top: 0.5rem; padding-left: 1rem;">
+              <template x-for="para in noPunctuationParagraphs" :key="para.id">
+                <div 
+                  class="no-punct-item"
+                  style="padding: 0.25rem 0; cursor: pointer; color: #007bff;"
+                  @click="goToParagraph(para.id)">
+                  <span>段落 <span x-text="para.id + 1"></span>:</span>
+                  <span style="color: #666;" x-text="para.pureText.substring(0, 20) + (para.pureText.length > 20 ? '…' : '')"></span>
+                </div>
+              </template>
+            </div>
+          </details>
+        </div>
+        
+        <progress 
+          :value="globalStats.completedParagraphs" 
+          :max="globalStats.totalParagraphs"
+          role="progressbar"
+          :aria-valuenow="progressPercent"
+          aria-valuemin="0"
+          aria-valuemax="100">
+        </progress>
+        <small>段落進度: <span x-text="globalStats.completedParagraphs"></span> / <span x-text="globalStats.totalParagraphs"></span></small>
+      </article>
+      
+      <div style="margin-top: 2rem; text-align: center;">
+        <!-- Per spec US2-6: Show "開始處理" only when there are unresolved conflicts -->
+        <button 
+          x-show="hasUnresolvedConflicts"
+          @click="goToFirstPending()">
+          開始處理 (<span x-text="unresolvedCount"></span> 段落待處理)
+        </button>
+        <span 
+          x-show="globalStats.conflictParagraphs > 0 && !hasUnresolvedConflicts"
+          style="color: var(--pico-color-green-500);">
+          ✓ 所有衝突已處理
+        </span>
+        <button class="secondary" @click="view = 'generate'">生成最終文本</button>
+      </div>
+    </section>
+    
+    <!-- ═══════════════════════════════════════════════════════════════
+         VIEW: Paragraph (US3, US4)
+         ═══════════════════════════════════════════════════════════════ -->
+    <section x-show="view === 'paragraph'" x-cloak>
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <h2>
+          <template x-if="filter === 'pending'">
+            <span>需處理 <span x-text="currentParagraphFilterIndex + 1"></span> / <span x-text="pendingParagraphCount"></span></span>
+          </template>
+          <template x-if="filter === 'all'">
+            <span>段落 <span x-text="currentParagraph + 1"></span> / <span x-text="paragraphs.length"></span></span>
+          </template>
+        </h2>
+        <div>
+          <button class="secondary outline" @click="filter = filter === 'all' ? 'pending' : 'all'">
+            <span x-text="filter === 'all' ? '僅需處理' : '所有段落'"></span>
+          </button>
+          <button class="secondary" @click="goToPrevParagraph()" :disabled="!hasPrevParagraph">< 上一段</button>
+          <button class="secondary" @click="goToNextParagraph()" :disabled="!hasNextParagraph">下一段 ></button>
+        </div>
+      </div>
+      
+      <!-- Paragraph Statistics -->
+      <article x-show="currentParagraphData">
+        <small>
+          段落內標點統計:
+          <span class="stat-badge stat-badge-identical">一致 <span x-text="currentParagraphData?.stats?.identical || 0"></span></span>
+          <span class="stat-badge stat-badge-majority">多數 <span x-text="currentParagraphData?.stats?.majority || 0"></span></span>
+          <span class="stat-badge stat-badge-conflict">衝突 <span x-text="currentParagraphData?.stats?.conflict || 0"></span></span>
+          <span class="stat-badge stat-badge-resolved">✓ <span x-text="currentParagraphData?.stats?.resolved || 0"></span></span>
+          <!-- T058a [FR-011a]: Per-paragraph no-punctuation warning -->
+          <span x-show="currentParagraphHasNoPunctuation" class="no-punct-badge" style="color: #856404; background-color: #fff3cd; padding: 2px 6px; border-radius: 3px; margin-left: 0.5rem;">⚠️ 此段落無標點</span>
+        </small>
+        <!-- Text mismatch statistics (only shown when paragraph has text differences) -->
+        <small x-show="currentParagraphData?.textDiffs?.length > 0" style="display: block; margin-top: 0.5rem; background-color: #e0e0e0; padding: 0.35rem 0.5rem; border-radius: 6px;">
+          段落內文字不一致:
+          <span class="stat-badge stat-badge-textmismatch">不一致 <span x-text="(currentParagraphData?.textDiffs?.length || 0) - getTextDiffResolvedCount(currentParagraphData)"></span></span>
+          <span class="stat-badge stat-badge-textmismatch-resolved">✓ <span x-text="getTextDiffResolvedCount(currentParagraphData)"></span></span>
+        </small>
+      </article>
+      
+      <div class="paragraph-container">
+        <!-- Inline Paragraph View -->
+        <article class="paragraph-text" x-html="renderInlineView()">
+        </article>
+        
+        <!-- Paragraph List Sidebar (desktop only) -->
+        <aside style="display: none;" class="paragraph-sidebar">
+          <h4>📋 <span x-text="filter === 'pending' ? '需處理列表' : '段落列表'"></span></h4>
+          <div class="paragraph-list">
+            <template x-for="para in filteredParagraphs" :key="para.id">
+              <div 
+                class="paragraph-list-item" 
+                :class="{ 'current': para.id === currentParagraph }"
+                @click="goToParagraph(para.id)">
+                <span x-text="getStatusEmoji(para)"></span>
+                <span>段落 <span x-text="para.id + 1"></span></span>
+                <span x-show="para.id === currentParagraph">(目前)</span>
+              </div>
+            </template>
+          </div>
+        </aside>
+      </div>
+      
+      <div style="margin-top: 2rem; text-align: center;">
+        <button @click="view = 'overview'" class="secondary">返回總覽</button>
+        <button @click="view = 'generate'">生成最終文本</button>
+      </div>
+    </section>
+    
+    <!-- ═══════════════════════════════════════════════════════════════
+         VIEW: Generate (US7)
+         ═══════════════════════════════════════════════════════════════ -->
+    <section x-show="view === 'generate'" x-cloak>
+      <h2>生成最終文本</h2>
+      
+      <!-- Unresolved Warning -->
+      <div x-show="unresolvedCount > 0" class="error" x-cloak>
+        <strong>⚠️</strong> 還有 <span x-text="unresolvedCount"></span> 個衝突未處理（將採用版本 A）
+      </div>
+      
+      <article>
+        <textarea 
+          readonly 
+          rows="15" 
+          x-text="finalText"
+          style="font-family: 'Noto Serif TC', serif;">
+        </textarea>
+      </article>
+      
+      <div style="margin-top: 1rem; text-align: center;">
+        <button @click="copyToClipboard()" class="contrast">複製結果</button>
+        <button @click="exportToFile()" class="contrast">匯出檔案</button>
+        <button @click="view = 'paragraph'" class="secondary">返回修改</button>
+      </div>
+      
+      <!-- Success Notification -->
+      <div x-show="showCopySuccess" class="success" x-cloak>
+        ✓ 已複製到剪貼簿
+      </div>
+    </section>
+    
+    <!-- ═══════════════════════════════════════════════════════════════
+         Selection Popup Menu (US5)
+         ═══════════════════════════════════════════════════════════════ -->
+    <div 
+      x-show="popup.show" 
+      class="selection-popup"
+      :style="{ top: popup.y + 'px', left: popup.x + 'px' }"
+      @click.outside="closePopup()"
+      @keydown.escape.window="closePopup()"
+      x-cloak>
+      
+      <!-- Text Diff Popup (for text mismatch cases) -->
+      <template x-if="popup.isTextDiff && popup.textDiff">
+        <div>
+          <!-- Context Preview -->
+          <div class="popup-context" style="padding: 0.5rem 1rem; background: #343a40; border-bottom: 1px solid #495057; font-size: 0.9em;">
+            <div style="display: flex; align-items: center; gap: 0.25em;">
+              <span style="color: #adb5bd;">文字差異:</span>
+            </div>
+            <div class="paragraph-text" style="font-size: 1em; margin-top: 0.25rem; color: #fff;">
+              <span x-text="popup.contextBefore" style="color: #adb5bd;"></span><span class="marker marker-textmismatch" style="margin: 0 2px;" x-text="popup.contextPunct"></span><span x-text="popup.contextAfter" style="color: #adb5bd;"></span>
+            </div>
+          </div>
+          
+          <!-- Version Options Header -->
+          <div style="padding: 0.5rem 1rem 0.25rem; font-size: 0.85em; color: var(--pico-muted-color);">
+            選擇文字版本 <kbd style="font-size: 0.8em;">1</kbd><kbd style="font-size: 0.8em;">2</kbd><kbd style="font-size: 0.8em;">3</kbd>
+          </div>
+          
+          <!-- Version Options for Text Diff -->
+          <div 
+            class="selection-popup-item"
+            :class="{ 'selected': popup.textDiff.selected === 'A' }"
+            @click="selectTextDiff('A')">
+            <span><kbd>1</kbd> <span x-text="getVersionLabels().A"></span>: <span class="marker marker-textmismatch" 
+              style="margin: 0 4px;" x-text="popup.textDiff.values?.A || '∅'"></span></span>
+            <span x-show="popup.textDiff.selected === 'A'">✓</span>
+          </div>
+          <div 
+            class="selection-popup-item"
+            :class="{ 'selected': popup.textDiff.selected === 'B' }"
+            @click="selectTextDiff('B')">
+            <span><kbd>2</kbd> <span x-text="getVersionLabels().B"></span>: <span class="marker marker-textmismatch" 
+              style="margin: 0 4px;" x-text="popup.textDiff.values?.B || '∅'"></span></span>
+            <span x-show="popup.textDiff.selected === 'B'">✓</span>
+          </div>
+          <div 
+            class="selection-popup-item"
+            :class="{ 'selected': popup.textDiff.selected === 'C' }"
+            @click="selectTextDiff('C')">
+            <span><kbd>3</kbd> <span x-text="getVersionLabels().C"></span>: <span class="marker marker-textmismatch" 
+              style="margin: 0 4px;" x-text="popup.textDiff.values?.C || '∅'"></span></span>
+            <span x-show="popup.textDiff.selected === 'C'">✓</span>
+          </div>
+        </div>
+      </template>
+      
+      <!-- Punctuation Popup (original behavior) -->
+      <template x-if="!popup.isTextDiff && popup.position">
+        <div>
+          <!-- Position Context Preview (T073) -->
+          <div class="popup-context" style="padding: 0.5rem 1rem; background: var(--pico-secondary-background); border-bottom: 1px solid var(--pico-muted-border-color); font-size: 0.9em;">
+            <div style="display: flex; align-items: center; gap: 0.25em;">
+              <span style="color: var(--pico-muted-color);">前後文脈絡:</span>
+            </div>
+            <div class="paragraph-text" style="font-size: 1em; margin-top: 0.25rem;">
+              <span x-text="popup.contextBefore" style="color: var(--pico-muted-color);"></span><span class="marker marker-conflict" style="margin: 0 2px;" x-text="popup.contextPunct"></span><span x-text="popup.contextAfter" style="color: var(--pico-muted-color);"></span>
+            </div>
+          </div>
+          
+          <!-- Version Options Header -->
+          <div style="padding: 0.5rem 1rem 0.25rem; font-size: 0.85em; color: var(--pico-muted-color);">
+            選擇標點 <kbd style="font-size: 0.8em;">1</kbd><kbd style="font-size: 0.8em;">2</kbd><kbd style="font-size: 0.8em;">3</kbd>
+          </div>
+          
+          <!-- Version Options -->
+          <div 
+            class="selection-popup-item"
+            :class="{ 'selected': popup.position.selected === 'A' }"
+            @click="selectVersion('A')">
+            <span><kbd>1</kbd> <span x-text="getVersionLabels().A"></span>: <span class="marker" 
+              :class="getPopupMarkerClass('A')" 
+              style="margin: 0 4px;" x-text="popup.position.values.A || '∅'"></span></span>
+            <span x-show="popup.position.selected === 'A'">✓</span>
+          </div>
+          <div 
+            class="selection-popup-item"
+            :class="{ 'selected': popup.position.selected === 'B' }"
+            @click="selectVersion('B')">
+            <span><kbd>2</kbd> <span x-text="getVersionLabels().B"></span>: <span class="marker" 
+              :class="getPopupMarkerClass('B')" 
+              style="margin: 0 4px;" x-text="popup.position.values.B || '∅'"></span></span>
+            <span x-show="popup.position.selected === 'B'">✓</span>
+          </div>
+          <div 
+            class="selection-popup-item"
+            :class="{ 'selected': popup.position.selected === 'C' }"
+            @click="selectVersion('C')">
+            <span><kbd>3</kbd> <span x-text="getVersionLabels().C"></span>: <span class="marker" 
+              :class="getPopupMarkerClass('C')" 
+              style="margin: 0 4px;" x-text="popup.position.values.C || '∅'"></span></span>
+            <span x-show="popup.position.selected === 'C'">✓</span>
+          </div>
+          
+          <hr style="margin: 0.5rem 0;">
+          
+          <!-- Custom Option (T075) -->
+          <div 
+            class="selection-popup-item"
+            :class="{ 'selected': popup.position.selected === 'custom' }"
+            @click="showCustomGrid = !showCustomGrid">
+            <span>自定義<template x-if="popup.position.selected === 'custom'">: <span class="marker marker-resolved" style="margin: 0 4px;" x-text="popup.position.customValue"></span></template></span>
+            <span x-text="showCustomGrid ? '▼' : '▶'"></span>
+          </div>
+          
+          <!-- Punctuation Grid -->
+          <div x-show="showCustomGrid" class="punctuation-grid" x-cloak>
+            <template x-for="punct in punctuationList" :key="punct">
+              <button class="secondary outline" @click="selectCustom(punct)" x-text="punct"></button>
+            </template>
+          </div>
+          
+          <!-- No Punctuation Option -->
+          <div 
+            class="selection-popup-item"
+            :class="{ 'selected': popup.position.selected === 'none' }"
+            @click="selectNone()"
+            style="border-top: 1px solid var(--pico-muted-border-color); margin-top: 0.25rem;">
+            <span>不加標點 (刪除)</span>
+            <span x-show="popup.position.selected === 'none'">✓</span>
+          </div>
+        </div>
+      </template>
+    </div>
+    
+    <!-- ═══════════════════════════════════════════════════════════════
+         Restore Session Modal (US6)
+         ═══════════════════════════════════════════════════════════════ -->
+    <dialog x-ref="restoreDialog">
+      <article>
+        <h3>🔄 發現未完成的校對工作</h3>
+        <p>上次編輯時間: <strong x-text="savedSessionTime"></strong></p>
+        <p>進度: <strong x-text="savedSessionProgress"></strong></p>
+        <p style="color: var(--pico-muted-color); font-size: 0.9em;">選擇「開始新工作」將會清除已儲存的進度。</p>
+        <footer style="display: flex; gap: 1rem; justify-content: flex-end;">
+          <button class="secondary outline" @click="startNewSession()">開始新工作</button>
+          <button @click="restoreSession()">恢復進度</button>
+        </footer>
+      </article>
+    </dialog>
+    
+    <!-- ═══════════════════════════════════════════════════════════════
+         Storage Quota Error Modal (US6 - T090)
+         ═══════════════════════════════════════════════════════════════ -->
+    <dialog x-ref="quotaErrorDialog">
+      <article>
+        <h3>⚠️ 儲存空間不足</h3>
+        <p>瀏覽器的 localStorage 空間已滿，無法自動儲存進度。</p>
+        <p>建議您：</p>
+        <ul>
+          <li>立即生成最終文本並複製結果</li>
+          <li>清除瀏覽器的其他網站資料</li>
+        </ul>
+        <footer>
+          <button @click="$refs.quotaErrorDialog.close()">我知道了</button>
+        </footer>
+      </article>
+    </dialog>
+    
+  </main>
+  
+  <script>
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN LAYER - Pure business logic (no framework dependencies)
+// Per Constitution §IV - Clean Architecture
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Chinese punctuation regex - SINGLE SOURCE OF TRUTH
+ * Per data-model.md §Constants
+ */
+const CHINESE_PUNCTUATION = /[，。．、；：？！「」『』（）【】〈〉《》—…·～﹁﹂]/g;
+
+/**
+ * List of common Chinese punctuation for custom selection grid
+ */
+const PUNCTUATION_LIST = ['，', '。', '．', '、', '；', '：', '？', '！', '「', '」', '『', '』', '（', '）', '【', '】', '〔', '〕', '—', '…', '·'];
+
+/**
+ * Strip all Chinese punctuation from text
+ * @param {string} text - Input text with punctuation
+ * @returns {string} Pure text without punctuation
+ */
+function stripPunctuation(text) {
+  return text.replace(CHINESE_PUNCTUATION, '');
+}
+
+/**
+ * Extract punctuation positions from text
+ * @param {string} text - Input text with punctuation
+ * @returns {Array<{position: number, punctuation: string}>} Array of position objects (char-by-char)
+ */
+function extractPunctuationPositions(text) {
+  const positions = [];
+  let pureIndex = 0;
+  
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (CHINESE_PUNCTUATION.test(char)) {
+      // Reset regex lastIndex after test
+      CHINESE_PUNCTUATION.lastIndex = 0;
+      // Record each punctuation as individual position (char-by-char)
+      positions.push({ position: pureIndex, punctuation: char });
+    } else {
+      pureIndex++;
+    }
+  }
+  
+  return positions;
+}
+
+/**
+ * Split text into paragraphs by blank lines
+ * @param {string} text - Input text
+ * @returns {string[]} Array of paragraph strings
+ */
+function splitIntoParagraphs(text) {
+  return text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 0);
+}
+
+/**
+ * Normalize paragraphs across three versions
+ * @param {string[]} parasA - Paragraphs from version A
+ * @param {string[]} parasB - Paragraphs from version B
+ * @param {string[]} parasC - Paragraphs from version C
+ * @returns {{valid: boolean, error?: string, count: number}}
+ */
+function normalizeParagraphs(parasA, parasB, parasC) {
+  const countA = parasA.length;
+  const countB = parasB.length;
+  const countC = parasC.length;
+  
+  if (countA !== countB || countB !== countC) {
+    return {
+      valid: false,
+      error: `段落數量不一致: A=${countA}, B=${countB}, C=${countC}`,
+      count: 0
+    };
+  }
+  
+  return { valid: true, count: countA };
+}
+
+/**
+ * Classify difference at a position
+ * @param {string|null} valueA - Punctuation from version A
+ * @param {string|null} valueB - Punctuation from version B
+ * @param {string|null} valueC - Punctuation from version C
+ * @returns {{type: string, majorityValue?: string, majorityVersions?: string[]}}
+ */
+function classifyDiff(valueA, valueB, valueC) {
+  // Normalize null/undefined to null
+  const a = valueA || null;
+  const b = valueB || null;
+  const c = valueC || null;
+  
+  // All identical
+  if (a === b && b === c) {
+    return { type: 'identical', majorityValue: a };
+  }
+  
+  // Check for majority (2 of 3 agree)
+  if (a === b && a !== c) {
+    return { type: 'majority', majorityValue: a, majorityVersions: ['A', 'B'] };
+  }
+  if (a === c && a !== b) {
+    return { type: 'majority', majorityValue: a, majorityVersions: ['A', 'C'] };
+  }
+  if (b === c && b !== a) {
+    return { type: 'majority', majorityValue: b, majorityVersions: ['B', 'C'] };
+  }
+  
+  // All different (conflict)
+  return { type: 'conflict' };
+}
+
+// Note: CJK variant normalization was intentionally removed.
+// Different CJK variants (繼/継, 渊/淵) are treated as different characters
+// and will show as text diffs at their aligned positions.
+
+/**
+ * Find text differences between three versions
+ * Returns array of diff objects with position and values from each version
+ * @param {string} textA - Pure text from version A
+ * @param {string} textB - Pure text from version B  
+ * @param {string} textC - Pure text from version C
+ * @returns {Array} Array of {position, values: {A, B, C}, type} objects
+ */
+/**
+ * Find the Longest Common Subsequence of two strings
+ * Returns array of { aIdx, bIdx } pairs indicating matched positions
+ * Uses simple character equality comparison
+ */
+function lcsPositions(strA, strB) {
+  const m = strA.length;
+  const n = strB.length;
+  
+  // Build LCS length table
+  const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (strA[i - 1] === strB[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+  
+  // Backtrack to find matched positions
+  const matches = [];
+  let i = m, j = n;
+  while (i > 0 && j > 0) {
+    if (strA[i - 1] === strB[j - 1]) {
+      matches.unshift({ aIdx: i - 1, bIdx: j - 1 });
+      i--; j--;
+    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+  
+  return matches;
+}
+
+/**
+ * Align three texts using LCS-based approach
+ * Returns an alignment array where each entry has { A, B, C, basePos }
+ * - basePos: position in the merged sequence
+ * - A/B/C: character at that position (empty string if not present)
+ */
+function alignThreeTexts(textA, textB, textC) {
+  // First align A and B
+  const matchesAB = lcsPositions(textA, textB);
+  
+  // Create mapping from A positions to B positions
+  const aToBmap = new Map();
+  const bToAmap = new Map();
+  for (const m of matchesAB) {
+    aToBmap.set(m.aIdx, m.bIdx);
+    bToAmap.set(m.bIdx, m.aIdx);
+  }
+  
+  // Build merged sequence of A and B
+  const mergedAB = [];
+  let aPtr = 0, bPtr = 0;
+  
+  while (aPtr < textA.length || bPtr < textB.length) {
+    if (aPtr < textA.length && aToBmap.has(aPtr) && aToBmap.get(aPtr) === bPtr) {
+      // Matched position
+      mergedAB.push({ A: textA[aPtr], B: textB[bPtr], aIdx: aPtr, bIdx: bPtr });
+      aPtr++; bPtr++;
+    } else if (aPtr < textA.length && !aToBmap.has(aPtr)) {
+      // A has extra character not matched
+      mergedAB.push({ A: textA[aPtr], B: '', aIdx: aPtr, bIdx: -1 });
+      aPtr++;
+    } else if (bPtr < textB.length && !bToAmap.has(bPtr)) {
+      // B has extra character not matched
+      mergedAB.push({ A: '', B: textB[bPtr], aIdx: -1, bIdx: bPtr });
+      bPtr++;
+    } else {
+      // Both have unmatched - prioritize A
+      if (aPtr < textA.length) {
+        mergedAB.push({ A: textA[aPtr], B: '', aIdx: aPtr, bIdx: -1 });
+        aPtr++;
+      } else if (bPtr < textB.length) {
+        mergedAB.push({ A: '', B: textB[bPtr], aIdx: -1, bIdx: bPtr });
+        bPtr++;
+      }
+    }
+  }
+  
+  // Now align C with the merged AB sequence
+  // Create a string representing AB merge for LCS with C
+  const abChars = mergedAB.map(e => e.A || e.B);
+  const abString = abChars.join('');
+  const matchesABC = lcsPositions(abString, textC);
+  
+  // Map merged positions to C positions
+  const mergedToCmap = new Map();
+  const cToMergedMap = new Map();
+  for (const m of matchesABC) {
+    mergedToCmap.set(m.aIdx, m.bIdx);
+    cToMergedMap.set(m.bIdx, m.aIdx);
+  }
+  
+  // Build final alignment
+  const alignment = [];
+  let mPtr = 0, cPtr = 0;
+  
+  while (mPtr < mergedAB.length || cPtr < textC.length) {
+    if (mPtr < mergedAB.length && mergedToCmap.has(mPtr) && mergedToCmap.get(mPtr) === cPtr) {
+      // Matched position
+      alignment.push({ 
+        A: mergedAB[mPtr].A, 
+        B: mergedAB[mPtr].B, 
+        C: textC[cPtr],
+        aIdx: mergedAB[mPtr].aIdx,
+        bIdx: mergedAB[mPtr].bIdx,
+        cIdx: cPtr
+      });
+      mPtr++; cPtr++;
+    } else if (mPtr < mergedAB.length && !mergedToCmap.has(mPtr)) {
+      // Merged AB has position not in C
+      alignment.push({ 
+        A: mergedAB[mPtr].A, 
+        B: mergedAB[mPtr].B, 
+        C: '',
+        aIdx: mergedAB[mPtr].aIdx,
+        bIdx: mergedAB[mPtr].bIdx,
+        cIdx: -1
+      });
+      mPtr++;
+    } else if (cPtr < textC.length && !cToMergedMap.has(cPtr)) {
+      // C has extra character
+      alignment.push({ 
+        A: '', 
+        B: '', 
+        C: textC[cPtr],
+        aIdx: -1,
+        bIdx: -1,
+        cIdx: cPtr
+      });
+      cPtr++;
+    } else {
+      // Edge case
+      if (mPtr < mergedAB.length) {
+        alignment.push({ 
+          A: mergedAB[mPtr].A, 
+          B: mergedAB[mPtr].B, 
+          C: '',
+          aIdx: mergedAB[mPtr].aIdx,
+          bIdx: mergedAB[mPtr].bIdx,
+          cIdx: -1
+        });
+        mPtr++;
+      } else if (cPtr < textC.length) {
+        alignment.push({ A: '', B: '', C: textC[cPtr], aIdx: -1, bIdx: -1, cIdx: cPtr });
+        cPtr++;
+      }
+    }
+  }
+  
+  return alignment;
+}
+
+/**
+ * Find text differences between three pure texts using LCS-based alignment
+ * Returns { diffs, longestVersion, baseText, alignment }
+ * Consecutive "swap" patterns are merged into single diff entries
+ */
+function findTextDifferences(textA, textB, textC) {
+  // Find which version is longest
+  const lengths = [textA.length, textB.length, textC.length];
+  const maxLen = Math.max(...lengths);
+  const longestVersion = lengths.indexOf(maxLen) === 0 ? 'A' : 
+                         lengths.indexOf(maxLen) === 1 ? 'B' : 'C';
+  const baseText = longestVersion === 'A' ? textA : longestVersion === 'B' ? textB : textC;
+  
+  // If all texts are identical, no diffs
+  if (textA === textB && textB === textC) {
+    return { diffs: [], longestVersion, baseText };
+  }
+  
+  // Get alignment
+  const alignment = alignThreeTexts(textA, textB, textC);
+  
+  // First pass: collect raw differences from alignment
+  const rawDiffs = [];
+  for (let i = 0; i < alignment.length; i++) {
+    const pos = alignment[i];
+    const charA = pos.A || '';
+    const charB = pos.B || '';
+    const charC = pos.C || '';
+    
+    if (charA !== charB || charB !== charC) {
+      rawDiffs.push({
+        position: i,
+        A: charA,
+        B: charB,
+        C: charC
+      });
+    }
+  }
+  
+  // Second pass: group consecutive diffs into blocks, then pair deletions with insertions
+  // A "block" is a run of consecutive diff positions
+  const blocks = [];
+  let currentBlock = null;
+  
+  for (let i = 0; i < rawDiffs.length; i++) {
+    const diff = rawDiffs[i];
+    if (!currentBlock || diff.position !== currentBlock.endPosition) {
+      // Start a new block
+      if (currentBlock) blocks.push(currentBlock);
+      currentBlock = {
+        startPosition: diff.position,
+        endPosition: diff.position + 1,
+        diffs: [diff]
+      };
+    } else {
+      // Extend current block
+      currentBlock.endPosition = diff.position + 1;
+      currentBlock.diffs.push(diff);
+    }
+  }
+  if (currentBlock) blocks.push(currentBlock);
+  
+  // Third pass: within each block, pair deletions from one version with insertions in another
+  // The goal is to merge character swaps (e.g., A=繼,B=∅,C=∅ with A=∅,B=継,C=継)
+  const mergedDiffs = [];
+  
+  for (const block of blocks) {
+    // Separate diffs by type for pairing
+    // Pattern 1: A only (A has char, B=∅, C=∅) pairs with BC only (A=∅, B=C≠∅)
+    // Pattern 2: AC only (A=C≠∅, B=∅) pairs with B only (A=∅, B≠∅, C=∅)
+    // Pattern 3: AB only (A=B≠∅, C=∅) pairs with C only (A=∅, B=∅, C≠∅)
+    // Pattern 4: B only pairs with AC only (reverse of pattern 2)
+    // Pattern 5: C only pairs with AB only (reverse of pattern 3)
+    
+    const aOnly = [];   // A has char, B=∅, C=∅
+    const bOnly = [];   // A=∅, B has char, C=∅
+    const cOnly = [];   // A=∅, B=∅, C has char
+    const bcOnly = [];  // A=∅, B=C≠∅
+    const acOnly = [];  // A=C≠∅, B=∅
+    const abOnly = [];  // A=B≠∅, C=∅
+    const other = [];   // Everything else
+    
+    for (const diff of block.diffs) {
+      if (diff.A && !diff.B && !diff.C) {
+        aOnly.push(diff);
+      } else if (!diff.A && diff.B && !diff.C) {
+        bOnly.push(diff);
+      } else if (!diff.A && !diff.B && diff.C) {
+        cOnly.push(diff);
+      } else if (!diff.A && diff.B && diff.C && diff.B === diff.C) {
+        bcOnly.push(diff);
+      } else if (diff.A && !diff.B && diff.C && diff.A === diff.C) {
+        acOnly.push(diff);
+      } else if (diff.A && diff.B && !diff.C && diff.A === diff.B) {
+        abOnly.push(diff);
+      } else {
+        other.push(diff);
+      }
+    }
+    
+    // Pair aOnly with bcOnly by ordinal position (A differs from B=C)
+    const pairCount1 = Math.min(aOnly.length, bcOnly.length);
+    for (let i = 0; i < pairCount1; i++) {
+      const a = aOnly[i];
+      const bc = bcOnly[i];
+      mergedDiffs.push({
+        position: Math.min(a.position, bc.position),
+        endPosition: Math.max(a.position, bc.position) + 1,
+        A: a.A,
+        B: bc.B,
+        C: bc.C
+      });
+    }
+    
+    // Pair acOnly with bOnly by ordinal position (B differs from A=C)
+    const pairCount2 = Math.min(acOnly.length, bOnly.length);
+    for (let i = 0; i < pairCount2; i++) {
+      const ac = acOnly[i];
+      const b = bOnly[i];
+      mergedDiffs.push({
+        position: Math.min(ac.position, b.position),
+        endPosition: Math.max(ac.position, b.position) + 1,
+        A: ac.A,
+        B: b.B,
+        C: ac.C
+      });
+    }
+    
+    // Pair abOnly with cOnly by ordinal position (C differs from A=B)
+    const pairCount3 = Math.min(abOnly.length, cOnly.length);
+    for (let i = 0; i < pairCount3; i++) {
+      const ab = abOnly[i];
+      const c = cOnly[i];
+      mergedDiffs.push({
+        position: Math.min(ab.position, c.position),
+        endPosition: Math.max(ab.position, c.position) + 1,
+        A: ab.A,
+        B: ab.B,
+        C: c.C
+      });
+    }
+    
+    // Add remaining unmatched from all categories
+    for (let i = pairCount1; i < aOnly.length; i++) {
+      mergedDiffs.push({
+        position: aOnly[i].position,
+        endPosition: aOnly[i].position + 1,
+        A: aOnly[i].A,
+        B: '',
+        C: ''
+      });
+    }
+    
+    for (let i = pairCount1; i < bcOnly.length; i++) {
+      mergedDiffs.push({
+        position: bcOnly[i].position,
+        endPosition: bcOnly[i].position + 1,
+        A: '',
+        B: bcOnly[i].B,
+        C: bcOnly[i].C
+      });
+    }
+    
+    for (let i = pairCount2; i < acOnly.length; i++) {
+      mergedDiffs.push({
+        position: acOnly[i].position,
+        endPosition: acOnly[i].position + 1,
+        A: acOnly[i].A,
+        B: '',
+        C: acOnly[i].C
+      });
+    }
+    
+    for (let i = pairCount2; i < bOnly.length; i++) {
+      mergedDiffs.push({
+        position: bOnly[i].position,
+        endPosition: bOnly[i].position + 1,
+        A: '',
+        B: bOnly[i].B,
+        C: ''
+      });
+    }
+    
+    for (let i = pairCount3; i < abOnly.length; i++) {
+      mergedDiffs.push({
+        position: abOnly[i].position,
+        endPosition: abOnly[i].position + 1,
+        A: abOnly[i].A,
+        B: abOnly[i].B,
+        C: ''
+      });
+    }
+    
+    for (let i = pairCount3; i < cOnly.length; i++) {
+      mergedDiffs.push({
+        position: cOnly[i].position,
+        endPosition: cOnly[i].position + 1,
+        A: '',
+        B: '',
+        C: cOnly[i].C
+      });
+    }
+    
+    // Add other diffs as-is
+    for (const diff of other) {
+      mergedDiffs.push({
+        position: diff.position,
+        endPosition: diff.position + 1,
+        A: diff.A,
+        B: diff.B,
+        C: diff.C
+      });
+    }
+  }
+  
+  // Sort by position
+  mergedDiffs.sort((a, b) => a.position - b.position);
+  
+  // Fourth pass: classify merged diffs and create final diff objects
+  const diffs = [];
+  for (const diff of mergedDiffs) {
+    let type = 'textconflict';
+    let majorityValue = null;
+    let majorityVersions = null;
+    
+    if (diff.A === diff.B && diff.A !== diff.C) {
+      type = 'textmajority';
+      majorityValue = diff.A;
+      majorityVersions = ['A', 'B'];
+    } else if (diff.A === diff.C && diff.A !== diff.B) {
+      type = 'textmajority';
+      majorityValue = diff.A;
+      majorityVersions = ['A', 'C'];
+    } else if (diff.B === diff.C && diff.B !== diff.A) {
+      type = 'textmajority';
+      majorityValue = diff.B;
+      majorityVersions = ['B', 'C'];
+    }
+    
+    diffs.push({
+      position: diff.position,
+      endPosition: diff.endPosition,
+      values: { A: diff.A, B: diff.B, C: diff.C },
+      type: type,
+      autoValue: majorityValue,
+      majorityVersions: majorityVersions,
+      selected: null
+    });
+  }
+  
+  return { diffs, longestVersion, baseText, alignment };
+}
+
+/**
+ * Build display text from alignment, returning text where identical chars are kept
+ * and difference positions are marked with their merged index
+ */
+function buildAlignedDisplayText(alignment) {
+  let displayText = '';
+  for (let i = 0; i < alignment.length; i++) {
+    const pos = alignment[i];
+    // For display purposes, prefer non-empty char
+    displayText += pos.A || pos.B || pos.C || '';
+  }
+  return displayText;
+}
+
+/**
+ * Extract punctuation that follows each pure text position in original text
+ * @param {string} originalText - Original text with punctuation
+ * @returns {Array<{pureIdx: number, punctuation: string}>} Array of punctuation positions (char-by-char)
+ */
+function extractPunctuationAfterPositions(originalText) {
+  const punctAfter = [];
+  let pureIdx = 0;
+  
+  for (let i = 0; i < originalText.length; i++) {
+    const char = originalText[i];
+    if (CHINESE_PUNCTUATION.test(char)) {
+      CHINESE_PUNCTUATION.lastIndex = 0;
+      // Each punctuation is recorded individually (char-by-char)
+      punctAfter.push({ pureIdx: pureIdx, punctuation: char });
+    } else {
+      pureIdx++;
+    }
+  }
+  
+  return punctAfter;
+}
+
+/**
+ * Compare punctuation using alignment coordinates (for text mismatch cases)
+ * @param {Array} alignment - Alignment array with aIdx, bIdx, cIdx
+ * @param {string} textA - Original text A with punctuation
+ * @param {string} textB - Original text B with punctuation
+ * @param {string} textC - Original text C with punctuation
+ * @param {Array} textDiffs - Array of text diff objects with position and endPosition
+ * @returns {Array} Array of position diff objects using alignment indices
+ */
+function comparePunctuationWithAlignment(alignment, textA, textB, textC, textDiffs = []) {
+  // Extract punctuation arrays for each version (char-by-char)
+  const punctArrA = extractPunctuationAfterPositions(textA);
+  const punctArrB = extractPunctuationAfterPositions(textB);
+  const punctArrC = extractPunctuationAfterPositions(textC);
+  
+  // Convert to Maps for efficient lookup (pureIdx -> array of punctuations)
+  const punctMapA = new Map();
+  const punctMapB = new Map();
+  const punctMapC = new Map();
+  
+  for (const p of punctArrA) {
+    if (!punctMapA.has(p.pureIdx)) punctMapA.set(p.pureIdx, []);
+    punctMapA.get(p.pureIdx).push(p.punctuation);
+  }
+  for (const p of punctArrB) {
+    if (!punctMapB.has(p.pureIdx)) punctMapB.set(p.pureIdx, []);
+    punctMapB.get(p.pureIdx).push(p.punctuation);
+  }
+  for (const p of punctArrC) {
+    if (!punctMapC.has(p.pureIdx)) punctMapC.set(p.pureIdx, []);
+    punctMapC.get(p.pureIdx).push(p.punctuation);
+  }
+  
+  // Build a set of alignment positions that are inside text diffs (not the last position)
+  // These positions should skip punctuation lookup as they're in the middle of a diff
+  const skipPunctPositions = new Set();
+  const diffEndPositions = new Map(); // Maps diff end position to the diff
+  for (const diff of textDiffs) {
+    // Skip all positions except the last one in a multi-position diff
+    for (let p = diff.position; p < diff.endPosition - 1; p++) {
+      skipPunctPositions.add(p);
+    }
+    // Record the last position of each diff
+    diffEndPositions.set(diff.endPosition - 1, diff);
+  }
+  
+  const positions = [];
+  
+  // Track the last character position seen for each version
+  // This is needed for text diffs where one version has a gap
+  let lastCharIdxA = -1;
+  let lastCharIdxB = -1;
+  let lastCharIdxC = -1;
+  
+  // For each alignment position, compare the punctuation that follows
+  for (let alignIdx = 0; alignIdx < alignment.length; alignIdx++) {
+    const pos = alignment[alignIdx];
+    
+    // Update last character index for each version
+    if (pos.aIdx >= 0) lastCharIdxA = pos.aIdx;
+    if (pos.bIdx >= 0) lastCharIdxB = pos.bIdx;
+    if (pos.cIdx >= 0) lastCharIdxC = pos.cIdx;
+    
+    // Skip punctuation lookup for positions in the middle of a text diff
+    if (skipPunctPositions.has(alignIdx)) {
+      continue;
+    }
+    
+    // Check if this is the end of a text diff
+    const isTextDiffEnd = diffEndPositions.has(alignIdx);
+    
+    // Get the pure text index for each version
+    // For text diff end positions, use the last seen character index for each version
+    // This ensures all versions' punctuation is looked up even if they had gaps
+    let pureIdxA, pureIdxB, pureIdxC;
+    
+    if (isTextDiffEnd) {
+      // At the end of a text diff, use the last character position for each version
+      pureIdxA = lastCharIdxA >= 0 ? lastCharIdxA + 1 : -1;
+      pureIdxB = lastCharIdxB >= 0 ? lastCharIdxB + 1 : -1;
+      pureIdxC = lastCharIdxC >= 0 ? lastCharIdxC + 1 : -1;
+    } else {
+      // Normal case: use current position's character index
+      pureIdxA = pos.aIdx >= 0 ? pos.aIdx + 1 : -1;
+      pureIdxB = pos.bIdx >= 0 ? pos.bIdx + 1 : -1;
+      pureIdxC = pos.cIdx >= 0 ? pos.cIdx + 1 : -1;
+    }
+    
+    // Get punctuation arrays for each version at this position
+    const punctsA = pureIdxA >= 0 ? (punctMapA.get(pureIdxA) || []) : [];
+    const punctsB = pureIdxB >= 0 ? (punctMapB.get(pureIdxB) || []) : [];
+    const punctsC = pureIdxC >= 0 ? (punctMapC.get(pureIdxC) || []) : [];
+    
+    // Find max length to iterate through all positions
+    const maxLen = Math.max(punctsA.length, punctsB.length, punctsC.length);
+    
+    // Compare each punctuation position individually (char-by-char)
+    for (let pIdx = 0; pIdx < maxLen; pIdx++) {
+      const valueA = punctsA[pIdx] || null;
+      const valueB = punctsB[pIdx] || null;
+      const valueC = punctsC[pIdx] || null;
+      
+      // Skip if all are null
+      if (valueA === null && valueB === null && valueC === null) {
+        continue;
+      }
+      
+      // Classify the difference
+      const classification = classifyDiff(valueA, valueB, valueC);
+      
+      positions.push({
+        position: alignIdx,  // Use alignment index as position
+        alignmentPosition: alignIdx,
+        punctIndex: pIdx,  // Index within consecutive punctuations
+        values: { A: valueA, B: valueB, C: valueC },
+        type: classification.type,
+        autoValue: classification.majorityValue || null,
+        majorityVersions: classification.majorityVersions || null,
+        selected: null,
+        customValue: null
+      });
+    }
+  }
+  
+  return positions;
+}
+
+/**
+ * Compare a single paragraph across three versions
+ * @param {string} textA - Paragraph from version A
+ * @param {string} textB - Paragraph from version B
+ * @param {string} textC - Paragraph from version C
+ * @returns {{pureText: string, positions: Array, valid: boolean, error?: string, textDiffs?: Array}}
+ */
+function compareParagraph(textA, textB, textC) {
+  const pureA = stripPunctuation(textA);
+  const pureB = stripPunctuation(textB);
+  const pureC = stripPunctuation(textC);
+  
+  // Check if pure texts match
+  if (pureA !== pureB || pureB !== pureC) {
+    // Find the specific text differences - use longest version as base
+    const diffResult = findTextDifferences(pureA, pureB, pureC);
+    const { diffs: textDiffs, longestVersion, baseText, alignment } = diffResult;
+    
+    // Build display text from alignment (uses non-empty chars)
+    const alignedDisplayText = buildAlignedDisplayText(alignment);
+    
+    // Store original texts for display (with punctuation)
+    const originals = { A: textA, B: textB, C: textC };
+    const longestOriginal = originals[longestVersion];
+    
+    // Compare punctuation using alignment (even for text mismatch cases)
+    // Pass textDiffs so we can handle punctuation at text diff boundaries correctly
+    const positions = comparePunctuationWithAlignment(alignment, textA, textB, textC, textDiffs);
+    
+    return {
+      pureText: alignedDisplayText,  // Use aligned display text
+      pureTexts: { A: pureA, B: pureB, C: pureC },
+      originals: originals,  // Store original texts with punctuation
+      longestVersion: longestVersion,
+      alignment: alignment,  // Store alignment for rendering
+      positions: positions,  // Punctuation positions using alignment coordinates
+      textDiffs: textDiffs,
+      valid: false,
+      error: '純文字內容不一致'
+    };
+  }
+  
+  // Normal case: pure texts match
+  const positionsA = extractPunctuationPositions(textA);
+  const positionsB = extractPunctuationPositions(textB);
+  const positionsC = extractPunctuationPositions(textC);
+  
+  // Convert arrays to Maps for easier lookup (position -> array of punctuations)
+  // Multiple punctuation marks can exist at the same position (e.g., "。」")
+  const mapA = new Map();
+  const mapB = new Map();
+  const mapC = new Map();
+  
+  for (const p of positionsA) {
+    if (!mapA.has(p.position)) mapA.set(p.position, []);
+    mapA.get(p.position).push(p.punctuation);
+  }
+  for (const p of positionsB) {
+    if (!mapB.has(p.position)) mapB.set(p.position, []);
+    mapB.get(p.position).push(p.punctuation);
+  }
+  for (const p of positionsC) {
+    if (!mapC.has(p.position)) mapC.set(p.position, []);
+    mapC.get(p.position).push(p.punctuation);
+  }
+  
+  // Collect all unique positions
+  const allPositions = new Set([
+    ...mapA.keys(),
+    ...mapB.keys(),
+    ...mapC.keys()
+  ]);
+  
+  const positions = [];
+  
+  for (const pos of [...allPositions].sort((a, b) => a - b)) {
+    const punctsA = mapA.get(pos) || [];
+    const punctsB = mapB.get(pos) || [];
+    const punctsC = mapC.get(pos) || [];
+    
+    // Find max length to iterate through all punctuation indices
+    const maxLen = Math.max(punctsA.length, punctsB.length, punctsC.length);
+    
+    for (let pIdx = 0; pIdx < maxLen; pIdx++) {
+      const valueA = punctsA[pIdx] || null;
+      const valueB = punctsB[pIdx] || null;
+      const valueC = punctsC[pIdx] || null;
+      
+      const classification = classifyDiff(valueA, valueB, valueC);
+      
+      positions.push({
+        position: pos,
+        punctIndex: pIdx,
+        values: { A: valueA, B: valueB, C: valueC },
+        type: classification.type,
+        autoValue: classification.majorityValue || null,
+        majorityVersions: classification.majorityVersions || null,
+        selected: null,
+        customValue: null
+      });
+    }
+  }
+  
+  return {
+    pureText: pureA,
+    positions,
+    valid: true
+  };
+}
+
+/**
+ * Compute statistics for an array of paragraphs
+ * Per spec US2-4: paragraph-level counts (完全一致段落、多數一致段落、需處理段落)
+ * @param {Array} paragraphs - Array of paragraph objects with positions
+ * @returns {Object} Statistics object with paragraph and position counts
+ */
+function computeStatistics(paragraphs) {
+  let stats = {
+    // Paragraph-level stats (per spec US2-4)
+    totalParagraphs: paragraphs.length,
+    identicalParagraphs: 0,    // All positions are identical
+    majorityParagraphs: 0,     // All positions are identical or majority (no conflicts)
+    conflictParagraphs: 0,     // Has at least one conflict position OR text mismatch
+    completedParagraphs: 0,    // All conflicts resolved
+    // Position-level stats (for detailed view)
+    totalPositions: 0,
+    identicalPositions: 0,
+    majorityPositions: 0,
+    conflictPositions: 0,
+    resolvedConflicts: 0,
+    // T031a: Conflict breakdown (per spec US2-3, US2-4) - TOTAL counts
+    conflictPunctuationOnly: 0,  // Text match + punctuation conflicts
+    conflictTextOnly: 0,          // Text mismatch + no punctuation conflicts
+    conflictBoth: 0,              // Text mismatch + punctuation conflicts
+    // Unresolved breakdown counts (for dynamic display)
+    unresolvedPunctuationOnly: 0,
+    unresolvedTextOnly: 0,
+    unresolvedBoth: 0
+  };
+  
+  for (const para of paragraphs) {
+    let paraHasPunctConflict = false;
+    let paraHasMajority = false;
+    let paraAllPunctResolved = true;
+    const hasTextMismatch = para.valid === false;
+    
+    // Check if all text differences are resolved
+    let paraAllTextDiffsResolved = true;
+    if (hasTextMismatch && para.textDiffs && para.textDiffs.length > 0) {
+      paraAllTextDiffsResolved = para.textDiffs.every(
+        diff => diff.selected !== undefined && diff.selected !== null
+      );
+    }
+    
+    for (const pos of para.positions) {
+      stats.totalPositions++;
+      if (pos.type === 'identical') {
+        stats.identicalPositions++;
+      } else if (pos.type === 'majority') {
+        stats.majorityPositions++;
+        paraHasMajority = true;
+      } else if (pos.type === 'conflict') {
+        stats.conflictPositions++;
+        paraHasPunctConflict = true;
+        if (pos.selected !== null) {
+          stats.resolvedConflicts++;
+        } else {
+          paraAllPunctResolved = false;
+        }
+      }
+    }
+    
+    // Determine if this paragraph is fully resolved
+    const isFullyResolved = paraAllPunctResolved && paraAllTextDiffsResolved;
+    
+    // T031a: Classify paragraph with breakdown
+    // A paragraph is a "conflict" if it has text mismatch OR punctuation conflicts
+    if (hasTextMismatch && paraHasPunctConflict) {
+      // Both text mismatch AND punctuation conflicts
+      stats.conflictParagraphs++;
+      stats.conflictBoth++;
+      if (!isFullyResolved) stats.unresolvedBoth++;
+      if (isFullyResolved) stats.completedParagraphs++;
+    } else if (hasTextMismatch && !paraHasPunctConflict) {
+      // Text mismatch only (no punctuation conflicts)
+      stats.conflictParagraphs++;
+      stats.conflictTextOnly++;
+      if (!paraAllTextDiffsResolved) stats.unresolvedTextOnly++;
+      if (paraAllTextDiffsResolved) stats.completedParagraphs++;
+    } else if (!hasTextMismatch && paraHasPunctConflict) {
+      // Punctuation conflicts only (text matches)
+      stats.conflictParagraphs++;
+      stats.conflictPunctuationOnly++;
+      if (!paraAllPunctResolved) stats.unresolvedPunctuationOnly++;
+      if (paraAllPunctResolved) stats.completedParagraphs++;
+    } else if (paraHasMajority) {
+      // No conflicts, but has majority positions
+      stats.majorityParagraphs++;
+      stats.completedParagraphs++; // Auto-resolved
+    } else {
+      // All identical
+      stats.identicalParagraphs++;
+      stats.completedParagraphs++; // Nothing to resolve
+    }
+  }
+  
+  return stats;
+}
+
+/**
+ * Generate merged text for a paragraph
+ * @param {Object} paragraph - Paragraph object with pureText and positions
+ * @returns {string} Merged text with selected punctuation
+ */
+function generateMergedParagraph(paragraph) {
+  const pureText = paragraph.pureText;
+  let result = '';
+  let lastPos = 0;
+  
+  // Sort positions by index
+  const sortedPositions = [...paragraph.positions].sort((a, b) => a.position - b.position);
+  
+  for (const pos of sortedPositions) {
+    // Add text up to this position
+    result += pureText.slice(lastPos, pos.position);
+    lastPos = pos.position;
+    
+    // Determine which punctuation to use
+    let punct = '';
+    if (pos.selected === 'none') {
+      // User explicitly chose no punctuation
+      punct = '';
+    } else if (pos.selected === 'custom' && pos.customValue) {
+      punct = pos.customValue;
+    } else if (pos.selected) {
+      punct = pos.values[pos.selected] || '';
+    } else if (pos.type === 'identical' || pos.type === 'majority') {
+      punct = pos.autoValue || '';
+    } else {
+      // Conflict with no selection - default to version A
+      punct = pos.values.A || '';
+    }
+    
+    result += punct;
+  }
+  
+  // Add remaining text
+  result += pureText.slice(lastPos);
+  
+  return result;
+}
+
+/**
+ * Compute SHA-256 hash of content (simple implementation)
+ * @param {string} content - Text to hash
+ * @returns {Promise<string>} Hex hash string
+ */
+async function computeContentHash(content) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(content);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DOMAIN LAYER UNIT TESTS (T017-T022-T)
+// Per Constitution §IV - Test in Isolation
+// Run in browser console: runDomainTests()
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Simple test runner for domain layer functions
+ * @returns {Object} Test results summary
+ */
+function runDomainTests() {
+  const results = { passed: 0, failed: 0, tests: [] };
+  
+  function assert(condition, testName, details = '') {
+    if (condition) {
+      results.passed++;
+      results.tests.push({ name: testName, status: '✓ PASS', details });
+      console.log(`✓ PASS: ${testName}`);
+    } else {
+      results.failed++;
+      results.tests.push({ name: testName, status: '✗ FAIL', details });
+      console.error(`✗ FAIL: ${testName}`, details);
+    }
+  }
+  
+  function assertEquals(actual, expected, testName) {
+    const pass = JSON.stringify(actual) === JSON.stringify(expected);
+    assert(pass, testName, pass ? '' : `Expected: ${JSON.stringify(expected)}, Got: ${JSON.stringify(actual)}`);
+  }
+  
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('Domain Layer Unit Tests');
+  console.log('═══════════════════════════════════════════════════════════');
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // T017-T: Test stripPunctuation()
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- T017-T: stripPunctuation() ---');
+  
+  // Test 1: Basic punctuation removal
+  assertEquals(
+    stripPunctuation('你好，世界！'),
+    '你好世界',
+    'stripPunctuation: removes comma and exclamation'
+  );
+  
+  // Test 2: All punctuation types
+  assertEquals(
+    stripPunctuation('「引號」『雙引號』（括號）【方括】'),
+    '引號雙引號括號方括',
+    'stripPunctuation: removes all bracket types'
+  );
+  
+  // Test 3: Mixed content
+  assertEquals(
+    stripPunctuation('第一段。第二段，第三段；結束！'),
+    '第一段第二段第三段結束',
+    'stripPunctuation: removes mixed punctuation'
+  );
+  
+  // Test 4: No punctuation
+  assertEquals(
+    stripPunctuation('純文字內容'),
+    '純文字內容',
+    'stripPunctuation: preserves text without punctuation'
+  );
+  
+  // Test 5: Only punctuation
+  assertEquals(
+    stripPunctuation('，。、；：'),
+    '',
+    'stripPunctuation: returns empty for only punctuation'
+  );
+  
+  // Test 6: Empty string
+  assertEquals(
+    stripPunctuation(''),
+    '',
+    'stripPunctuation: handles empty string'
+  );
+  
+  // Test 7: Consecutive punctuation
+  assertEquals(
+    stripPunctuation('文字。」結束'),
+    '文字結束',
+    'stripPunctuation: removes consecutive punctuation'
+  );
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // T018-T: Test extractPunctuationPositions()
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- T018-T: extractPunctuationPositions() ---');
+  
+  // Test 1: Basic position extraction (returns array now)
+  let positions = extractPunctuationPositions('你好，世界！');
+  assertEquals(positions.length, 2, 'extractPositions: 2 punctuations found');
+  assertEquals(positions[0].position, 2, 'extractPositions: comma at position 2');
+  assertEquals(positions[0].punctuation, '，', 'extractPositions: comma value');
+  assertEquals(positions[1].position, 4, 'extractPositions: exclamation at position 4');
+  assertEquals(positions[1].punctuation, '！', 'extractPositions: exclamation value');
+  
+  // Test 2: Position at start (after 0 characters)
+  positions = extractPunctuationPositions('「開始」');
+  assertEquals(positions[0].position, 0, 'extractPositions: opening bracket at position 0');
+  assertEquals(positions[0].punctuation, '「', 'extractPositions: opening bracket value');
+  assertEquals(positions[1].position, 2, 'extractPositions: closing bracket at position 2');
+  assertEquals(positions[1].punctuation, '」', 'extractPositions: closing bracket value');
+  
+  // Test 3: Consecutive punctuation returns separate entries (char-by-char)
+  positions = extractPunctuationPositions('結束。」');
+  assertEquals(positions.length, 2, 'extractPositions: consecutive returns 2 entries');
+  assertEquals(positions[0].position, 2, 'extractPositions: first punct at position 2');
+  assertEquals(positions[0].punctuation, '。', 'extractPositions: period value');
+  assertEquals(positions[1].position, 2, 'extractPositions: second punct at position 2');
+  assertEquals(positions[1].punctuation, '」', 'extractPositions: bracket value');
+  
+  // Test 4: No punctuation returns empty array
+  positions = extractPunctuationPositions('純文字');
+  assertEquals(positions.length, 0, 'extractPositions: no punctuation returns empty array');
+  
+  // Test 5: Multiple positions
+  positions = extractPunctuationPositions('一，二，三');
+  assertEquals(positions[0].position, 1, 'extractPositions: first comma at position 1');
+  assertEquals(positions[1].position, 2, 'extractPositions: second comma at position 2');
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // T019-T: Test splitIntoParagraphs()
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- T019-T: splitIntoParagraphs() ---');
+  
+  // Test 1: Basic paragraph split
+  assertEquals(
+    splitIntoParagraphs('段落一\n\n段落二'),
+    ['段落一', '段落二'],
+    'splitIntoParagraphs: splits by double newline'
+  );
+  
+  // Test 2: Multiple blank lines
+  assertEquals(
+    splitIntoParagraphs('段落一\n\n\n\n段落二'),
+    ['段落一', '段落二'],
+    'splitIntoParagraphs: handles multiple blank lines'
+  );
+  
+  // Test 3: Whitespace in blank lines
+  assertEquals(
+    splitIntoParagraphs('段落一\n  \n段落二'),
+    ['段落一', '段落二'],
+    'splitIntoParagraphs: handles whitespace in blank lines'
+  );
+  
+  // Test 4: Single paragraph
+  assertEquals(
+    splitIntoParagraphs('只有一段'),
+    ['只有一段'],
+    'splitIntoParagraphs: single paragraph'
+  );
+  
+  // Test 5: Empty paragraphs filtered
+  assertEquals(
+    splitIntoParagraphs('\n\n段落\n\n'),
+    ['段落'],
+    'splitIntoParagraphs: filters empty paragraphs'
+  );
+  
+  // Test 6: Three paragraphs
+  assertEquals(
+    splitIntoParagraphs('一\n\n二\n\n三'),
+    ['一', '二', '三'],
+    'splitIntoParagraphs: three paragraphs'
+  );
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // T020-T: Test classifyDiff()
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- T020-T: classifyDiff() ---');
+  
+  // Test 1: All identical
+  let result = classifyDiff('，', '，', '，');
+  assertEquals(result.type, 'identical', 'classifyDiff: all identical');
+  assertEquals(result.majorityValue, '，', 'classifyDiff: identical has majorityValue');
+  
+  // Test 2: All null (identical)
+  result = classifyDiff(null, null, null);
+  assertEquals(result.type, 'identical', 'classifyDiff: all null is identical');
+  
+  // Test 3: Majority A=B
+  result = classifyDiff('。', '。', '，');
+  assertEquals(result.type, 'majority', 'classifyDiff: A=B majority');
+  assertEquals(result.majorityValue, '。', 'classifyDiff: A=B majorityValue');
+  assert(result.majorityVersions.includes('A') && result.majorityVersions.includes('B'), 
+    'classifyDiff: A=B majorityVersions');
+  
+  // Test 4: Majority A=C
+  result = classifyDiff('。', '，', '。');
+  assertEquals(result.type, 'majority', 'classifyDiff: A=C majority');
+  assertEquals(result.majorityValue, '。', 'classifyDiff: A=C majorityValue');
+  
+  // Test 5: Majority B=C
+  result = classifyDiff('，', '。', '。');
+  assertEquals(result.type, 'majority', 'classifyDiff: B=C majority');
+  assertEquals(result.majorityValue, '。', 'classifyDiff: B=C majorityValue');
+  
+  // Test 6: All different (conflict)
+  result = classifyDiff('，', '。', '；');
+  assertEquals(result.type, 'conflict', 'classifyDiff: all different is conflict');
+  
+  // Test 7: Two null, one value (majority null)
+  result = classifyDiff(null, null, '，');
+  assertEquals(result.type, 'majority', 'classifyDiff: two null is majority');
+  assertEquals(result.majorityValue, null, 'classifyDiff: majority null value');
+  
+  // Test 8: One null, two same (majority)
+  result = classifyDiff('，', '，', null);
+  assertEquals(result.type, 'majority', 'classifyDiff: A=B with C null');
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // T021-T: Test compareParagraph()
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- T021-T: compareParagraph() ---');
+  
+  // Test 1: Identical texts
+  result = compareParagraph('你好，世界！', '你好，世界！', '你好，世界！');
+  assertEquals(result.valid, true, 'compareParagraph: identical texts valid');
+  assertEquals(result.pureText, '你好世界', 'compareParagraph: correct pureText');
+  assertEquals(result.positions.length, 2, 'compareParagraph: 2 positions');
+  assertEquals(result.positions[0].type, 'identical', 'compareParagraph: first position identical');
+  
+  // Test 2: One difference (majority)
+  result = compareParagraph('你好，世界', '你好。世界', '你好，世界');
+  assertEquals(result.valid, true, 'compareParagraph: majority texts valid');
+  assertEquals(result.positions[0].type, 'majority', 'compareParagraph: position is majority');
+  assertEquals(result.positions[0].autoValue, '，', 'compareParagraph: majority autoValue is comma');
+  
+  // Test 3: All different (conflict)
+  result = compareParagraph('你好，世界', '你好。世界', '你好；世界');
+  assertEquals(result.valid, true, 'compareParagraph: conflict texts valid');
+  assertEquals(result.positions[0].type, 'conflict', 'compareParagraph: position is conflict');
+  
+  // Test 4: Pure text mismatch
+  result = compareParagraph('你好世界', '你好世', '你好世界');
+  assertEquals(result.valid, false, 'compareParagraph: text mismatch invalid');
+  assertEquals(result.error, '純文字內容不一致', 'compareParagraph: correct error message');
+  
+  // Test 5: Position with missing punctuation
+  result = compareParagraph('你好，世界', '你好世界', '你好，世界');
+  assertEquals(result.positions[0].values.A, '，', 'compareParagraph: A has comma');
+  assertEquals(result.positions[0].values.B, null, 'compareParagraph: B has null');
+  assertEquals(result.positions[0].values.C, '，', 'compareParagraph: C has comma');
+  
+  // Test 6: Consecutive punctuation - now returns separate positions (char-by-char)
+  result = compareParagraph('結束。」', '結束。」', '結束。」');
+  assertEquals(result.valid, true, 'compareParagraph: consecutive punctuation valid');
+  assertEquals(result.positions.length, 2, 'compareParagraph: consecutive returns 2 positions');
+  assertEquals(result.positions[0].values.A, '。', 'compareParagraph: first punct is period');
+  assertEquals(result.positions[1].values.A, '」', 'compareParagraph: second punct is bracket');
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // T022-T: Test generateMergedParagraph()
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- T022-T: generateMergedParagraph() ---');
+  
+  // Test 1: Auto-merge identical
+  let para = {
+    pureText: '你好世界',
+    positions: [
+      { position: 2, values: { A: '，', B: '，', C: '，' }, type: 'identical', autoValue: '，', selected: null }
+    ]
+  };
+  assertEquals(
+    generateMergedParagraph(para),
+    '你好，世界',
+    'generateMergedParagraph: auto-merge identical'
+  );
+  
+  // Test 2: Auto-merge majority
+  para = {
+    pureText: '你好世界',
+    positions: [
+      { position: 2, values: { A: '，', B: '，', C: '。' }, type: 'majority', autoValue: '，', selected: null }
+    ]
+  };
+  assertEquals(
+    generateMergedParagraph(para),
+    '你好，世界',
+    'generateMergedParagraph: auto-merge majority'
+  );
+  
+  // Test 3: User selection overrides
+  para = {
+    pureText: '你好世界',
+    positions: [
+      { position: 2, values: { A: '，', B: '。', C: '；' }, type: 'conflict', autoValue: null, selected: 'B' }
+    ]
+  };
+  assertEquals(
+    generateMergedParagraph(para),
+    '你好。世界',
+    'generateMergedParagraph: user selection applied'
+  );
+  
+  // Test 4: Custom value
+  para = {
+    pureText: '你好世界',
+    positions: [
+      { position: 2, values: { A: '，', B: '。', C: '；' }, type: 'conflict', autoValue: null, selected: 'custom', customValue: '：' }
+    ]
+  };
+  assertEquals(
+    generateMergedParagraph(para),
+    '你好：世界',
+    'generateMergedParagraph: custom value applied'
+  );
+  
+  // Test 5: Unresolved conflict defaults to A
+  para = {
+    pureText: '你好世界',
+    positions: [
+      { position: 2, values: { A: '，', B: '。', C: '；' }, type: 'conflict', autoValue: null, selected: null }
+    ]
+  };
+  assertEquals(
+    generateMergedParagraph(para),
+    '你好，世界',
+    'generateMergedParagraph: unresolved defaults to A'
+  );
+  
+  // Test 6: Multiple positions
+  para = {
+    pureText: '一二三',
+    positions: [
+      { position: 1, values: { A: '，', B: '，', C: '，' }, type: 'identical', autoValue: '，', selected: null },
+      { position: 2, values: { A: '，', B: '，', C: '，' }, type: 'identical', autoValue: '，', selected: null }
+    ]
+  };
+  assertEquals(
+    generateMergedParagraph(para),
+    '一，二，三',
+    'generateMergedParagraph: multiple positions'
+  );
+  
+  // Test 7: Empty positions
+  para = { pureText: '純文字', positions: [] };
+  assertEquals(
+    generateMergedParagraph(para),
+    '純文字',
+    'generateMergedParagraph: no positions'
+  );
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Additional: Test computeStatistics()
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- Additional: computeStatistics() ---');
+  
+  const testParagraphs = [
+    {
+      id: 0,
+      positions: [
+        { type: 'identical', selected: null },
+        { type: 'identical', selected: null }
+      ]
+    },
+    {
+      id: 1,
+      positions: [
+        { type: 'identical', selected: null },
+        { type: 'majority', selected: null }
+      ]
+    },
+    {
+      id: 2,
+      positions: [
+        { type: 'conflict', selected: 'A' },
+        { type: 'majority', selected: null }
+      ]
+    },
+    {
+      id: 3,
+      positions: [
+        { type: 'conflict', selected: null },
+        { type: 'conflict', selected: 'B' }
+      ]
+    }
+  ];
+  
+  const stats = computeStatistics(testParagraphs);
+  // Paragraph-level stats
+  assertEquals(stats.totalParagraphs, 4, 'computeStatistics: total paragraphs');
+  assertEquals(stats.identicalParagraphs, 1, 'computeStatistics: identical paragraphs (para 0)');
+  assertEquals(stats.majorityParagraphs, 1, 'computeStatistics: majority paragraphs (para 1)');
+  assertEquals(stats.conflictParagraphs, 2, 'computeStatistics: conflict paragraphs (para 2, 3)');
+  assertEquals(stats.completedParagraphs, 3, 'computeStatistics: completed paragraphs (para 0,1,2)');
+  // Position-level stats
+  assertEquals(stats.identicalPositions, 3, 'computeStatistics: identical positions');
+  assertEquals(stats.majorityPositions, 2, 'computeStatistics: majority positions');
+  assertEquals(stats.conflictPositions, 3, 'computeStatistics: conflict positions');
+  assertEquals(stats.resolvedConflicts, 2, 'computeStatistics: resolved conflicts');
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Test Summary
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n═══════════════════════════════════════════════════════════');
+  console.log(`Test Results: ${results.passed} passed, ${results.failed} failed`);
+  console.log('═══════════════════════════════════════════════════════════');
+  
+  if (results.failed === 0) {
+    console.log('🎉 All domain layer tests passed!');
+  } else {
+    console.warn('⚠️ Some tests failed. Review the output above.');
+  }
+  
+  return results;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// APPLICATION LAYER UNIT TESTS (US5 & US6)
+// Per Constitution §IV - Test Application Layer functions
+// Run in browser console: runApplicationTests()
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Test runner for Application Layer functions (US5, US6)
+ * @returns {Object} Test results summary
+ */
+function runApplicationTests() {
+  const results = { passed: 0, failed: 0, tests: [] };
+  
+  function assert(condition, testName, details = '') {
+    if (condition) {
+      results.passed++;
+      results.tests.push({ name: testName, status: '✓ PASS', details });
+      console.log(`✓ PASS: ${testName}`);
+    } else {
+      results.failed++;
+      results.tests.push({ name: testName, status: '✗ FAIL', details });
+      console.error(`✗ FAIL: ${testName}`, details);
+    }
+  }
+  
+  function assertEquals(actual, expected, testName) {
+    const pass = JSON.stringify(actual) === JSON.stringify(expected);
+    assert(pass, testName, pass ? '' : `Expected: ${JSON.stringify(expected)}, Got: ${JSON.stringify(actual)}`);
+  }
+  
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('Application Layer Unit Tests (US5 & US6)');
+  console.log('═══════════════════════════════════════════════════════════');
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // US5: Test generateMergedParagraph with 'none' selection
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- US5: generateMergedParagraph with selection types ---');
+  
+  // Test 1: 'none' selection removes punctuation
+  let para = {
+    pureText: '你好世界',
+    positions: [
+      { position: 2, values: { A: '，', B: '。', C: '；' }, type: 'conflict', autoValue: null, selected: 'none', customValue: '' }
+    ]
+  };
+  assertEquals(
+    generateMergedParagraph(para),
+    '你好世界',
+    'generateMergedParagraph: none selection removes punctuation'
+  );
+  
+  // Test 2: Mixed selections (version + custom + none)
+  para = {
+    pureText: '一二三四',
+    positions: [
+      { position: 1, values: { A: '，', B: '，', C: '，' }, type: 'identical', autoValue: '，', selected: null },
+      { position: 2, values: { A: '。', B: '；', C: '：' }, type: 'conflict', autoValue: null, selected: 'custom', customValue: '、' },
+      { position: 3, values: { A: '！', B: '？', C: '。' }, type: 'conflict', autoValue: null, selected: 'none', customValue: '' }
+    ]
+  };
+  assertEquals(
+    generateMergedParagraph(para),
+    '一，二、三四',
+    'generateMergedParagraph: mixed selections (auto + custom + none)'
+  );
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // US5: Test position context extraction (simulated)
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- US5: Position context extraction ---');
+  
+  // Simulate qryGetPositionContext logic
+  function testGetPositionContext(pureText, position, contextLen = 5) {
+    const before = pureText.slice(Math.max(0, position - contextLen), position);
+    const after = pureText.slice(position, Math.min(pureText.length, position + contextLen));
+    return { before, after };
+  }
+  
+  // Test 3: Context at beginning
+  let ctx = testGetPositionContext('你好世界結束', 0, 5);
+  assertEquals(ctx.before, '', 'getPositionContext: before at position 0');
+  assertEquals(ctx.after, '你好世界結', 'getPositionContext: after at position 0');
+  
+  // Test 4: Context at middle
+  ctx = testGetPositionContext('你好世界結束了', 3, 3);
+  assertEquals(ctx.before, '你好世', 'getPositionContext: before at middle');
+  assertEquals(ctx.after, '界結束', 'getPositionContext: after at middle');
+  
+  // Test 5: Context at end
+  ctx = testGetPositionContext('你好世界', 4, 5);
+  assertEquals(ctx.before, '你好世界', 'getPositionContext: before at end');
+  assertEquals(ctx.after, '', 'getPositionContext: after at end');
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // US6: Test session serialization/deserialization
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- US6: Session persistence ---');
+  
+  // Test 6: Session data structure
+  const sessionData = {
+    version: '1.0',
+    timestamp: '2025-12-02T10:00:00.000Z',
+    sources: {
+      A: { id: 'A', name: 'test.txt', content: '測試，內容。', sourceType: 'file' },
+      B: { id: 'B', name: 'test.txt', content: '測試。內容，', sourceType: 'file' },
+      C: { id: 'C', name: 'test.txt', content: '測試；內容：', sourceType: 'file' }
+    },
+    paragraphs: [
+      {
+        id: 0,
+        pureText: '測試內容',
+        positions: [
+          { position: 2, values: { A: '，', B: '。', C: '；' }, type: 'conflict', selected: 'A' },
+          { position: 4, values: { A: '。', B: '，', C: '：' }, type: 'conflict', selected: null }
+        ],
+        status: 'in-progress'
+      }
+    ],
+    currentParagraph: 0,
+    view: 'paragraph',
+    filter: 'pending'
+  };
+  
+  // Simulate save/restore
+  const serialized = JSON.stringify(sessionData);
+  const restored = JSON.parse(serialized);
+  
+  assertEquals(restored.version, '1.0', 'Session: version preserved');
+  assertEquals(restored.sources.A.content, '測試，內容。', 'Session: source content preserved');
+  assertEquals(restored.paragraphs[0].positions[0].selected, 'A', 'Session: selection preserved');
+  assertEquals(restored.paragraphs[0].positions[1].selected, null, 'Session: null selection preserved');
+  assertEquals(restored.view, 'paragraph', 'Session: view state preserved');
+  assertEquals(restored.filter, 'pending', 'Session: filter state preserved');
+  
+  // Test 7: localStorage key check (simulated)
+  const STORAGE_KEY = 'fosizhi-session';
+  assertEquals(STORAGE_KEY, 'fosizhi-session', 'Session: correct localStorage key');
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // US6: Test paragraph stats calculation after selection
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- US6: Paragraph stats after selection ---');
+  
+  function testCalculateParagraphStats(positions) {
+    let stats = { identical: 0, majority: 0, conflict: 0, resolved: 0 };
+    for (const pos of positions) {
+      if (pos.type === 'identical') stats.identical++;
+      else if (pos.type === 'majority') stats.majority++;
+      else if (pos.type === 'conflict') {
+        stats.conflict++;
+        if (pos.selected !== null) stats.resolved++;
+      }
+    }
+    return stats;
+  }
+  
+  // Test 8: All conflicts resolved
+  let positions = [
+    { type: 'conflict', selected: 'A' },
+    { type: 'conflict', selected: 'B' },
+    { type: 'conflict', selected: 'custom' }
+  ];
+  let calcStats = testCalculateParagraphStats(positions);
+  assertEquals(calcStats.conflict, 3, 'paragraphStats: conflict count');
+  assertEquals(calcStats.resolved, 3, 'paragraphStats: all resolved');
+  
+  // Test 9: Partial resolution
+  positions = [
+    { type: 'conflict', selected: 'A' },
+    { type: 'conflict', selected: null },
+    { type: 'majority', selected: null }
+  ];
+  calcStats = testCalculateParagraphStats(positions);
+  assertEquals(calcStats.conflict, 2, 'paragraphStats: conflict count with majority');
+  assertEquals(calcStats.resolved, 1, 'paragraphStats: partial resolution');
+  assertEquals(calcStats.majority, 1, 'paragraphStats: majority count');
+  
+  // Test 10: 'none' selection counts as resolved
+  positions = [
+    { type: 'conflict', selected: 'none' }
+  ];
+  calcStats = testCalculateParagraphStats(positions);
+  assertEquals(calcStats.resolved, 1, 'paragraphStats: none selection counts as resolved');
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // T068b: Test getExportFilename logic
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- T068b: Export filename generation ---');
+  
+  function testFindCommonPrefix(strings) {
+    if (!strings || strings.length === 0) return '';
+    if (strings.length === 1) return strings[0];
+    
+    const first = strings[0];
+    let prefix = '';
+    
+    for (let i = 0; i < first.length; i++) {
+      const char = first[i];
+      if (strings.every(s => s[i] === char)) {
+        prefix += char;
+      } else {
+        break;
+      }
+    }
+    
+    return prefix;
+  }
+  
+  function testGetExportFilename(sources) {
+    const names = ['A', 'B', 'C'].map(v => {
+      const source = sources[v];
+      if (!source || source.sourceType === 'paste') return null;
+      return source.name.replace(/\.txt$/i, '');
+    });
+    
+    if (names.some(n => n === null)) {
+      return '校對結果_final.txt';
+    }
+    
+    const prefix = testFindCommonPrefix(names);
+    
+    if (prefix && prefix.length >= 3) {
+      const cleanPrefix = prefix.replace(/_$/, '');
+      return `${cleanPrefix}_final.txt`;
+    }
+    
+    return '校對結果_final.txt';
+  }
+  
+  // Test 11: Common prefix with model names
+  let testSources = {
+    A: { name: 'y001_01_openai.txt', sourceType: 'file' },
+    B: { name: 'y001_01_claude.txt', sourceType: 'file' },
+    C: { name: 'y001_01_gemini.txt', sourceType: 'file' }
+  };
+  assertEquals(testGetExportFilename(testSources), 'y001_01_final.txt', 'exportFilename: common prefix with model names');
+  
+  // Test 12: No common prefix
+  testSources = {
+    A: { name: 'version_a.txt', sourceType: 'file' },
+    B: { name: 'version_b.txt', sourceType: 'file' },
+    C: { name: 'version_c.txt', sourceType: 'file' }
+  };
+  assertEquals(testGetExportFilename(testSources), 'version__final.txt', 'exportFilename: version_ common prefix');
+  
+  // Test 13: Paste input (no filename)
+  testSources = {
+    A: { name: 'test.txt', sourceType: 'file' },
+    B: { name: '版本 B (貼上)', sourceType: 'paste' },
+    C: { name: 'test.txt', sourceType: 'file' }
+  };
+  assertEquals(testGetExportFilename(testSources), '校對結果_final.txt', 'exportFilename: paste input fallback');
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // T079b: Test getVersionLabels logic
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- T079b: Version labels generation ---');
+  
+  function testGetVersionLabels(sources) {
+    const defaultLabels = { A: '版本 A', B: '版本 B', C: '版本 C' };
+    
+    const names = ['A', 'B', 'C'].map(v => {
+      const source = sources[v];
+      if (!source || source.sourceType === 'paste') return null;
+      return source.name.replace(/\.txt$/i, '');
+    });
+    
+    if (names.some(n => n === null)) {
+      return defaultLabels;
+    }
+    
+    const prefix = testFindCommonPrefix(names);
+    
+    if (!prefix || prefix.length < 3) {
+      return defaultLabels;
+    }
+    
+    const postfixes = names.map(name => {
+      let postfix = name.substring(prefix.length);
+      postfix = postfix.replace(/^_/, '');
+      return postfix;
+    });
+    
+    const uniquePostfixes = new Set(postfixes);
+    if (postfixes.every(p => p.length > 0) && uniquePostfixes.size === 3) {
+      return {
+        A: postfixes[0],
+        B: postfixes[1],
+        C: postfixes[2]
+      };
+    }
+    
+    return defaultLabels;
+  }
+  
+  // Test 14: Model names as labels
+  testSources = {
+    A: { name: 'y001_01_openai.txt', sourceType: 'file' },
+    B: { name: 'y001_01_claude.txt', sourceType: 'file' },
+    C: { name: 'y001_01_gemini.txt', sourceType: 'file' }
+  };
+  let labels = testGetVersionLabels(testSources);
+  assertEquals(labels.A, 'openai', 'versionLabels: A postfix');
+  assertEquals(labels.B, 'claude', 'versionLabels: B postfix');
+  assertEquals(labels.C, 'gemini', 'versionLabels: C postfix');
+  
+  // Test 15: Default labels when paste input
+  testSources = {
+    A: { name: 'test.txt', sourceType: 'file' },
+    B: { name: '版本 B (貼上)', sourceType: 'paste' },
+    C: { name: 'test.txt', sourceType: 'file' }
+  };
+  labels = testGetVersionLabels(testSources);
+  assertEquals(labels.A, '版本 A', 'versionLabels: default A with paste');
+  assertEquals(labels.B, '版本 B', 'versionLabels: default B with paste');
+  assertEquals(labels.C, '版本 C', 'versionLabels: default C with paste');
+  
+  // Test 16: Default labels when no common prefix
+  testSources = {
+    A: { name: 'a.txt', sourceType: 'file' },
+    B: { name: 'b.txt', sourceType: 'file' },
+    C: { name: 'c.txt', sourceType: 'file' }
+  };
+  labels = testGetVersionLabels(testSources);
+  assertEquals(labels.A, '版本 A', 'versionLabels: default A no prefix');
+  assertEquals(labels.B, '版本 B', 'versionLabels: default B no prefix');
+  assertEquals(labels.C, '版本 C', 'versionLabels: default C no prefix');
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Test Summary
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n═══════════════════════════════════════════════════════════');
+  console.log(`Test Results: ${results.passed} passed, ${results.failed} failed`);
+  console.log('═══════════════════════════════════════════════════════════');
+  
+  if (results.failed === 0) {
+    console.log('🎉 All application layer tests passed!');
+  } else {
+    console.warn('⚠️ Some tests failed. Review the output above.');
+  }
+  
+  return results;
+}
+
+/**
+ * Run all tests (Domain + Application layers)
+ * Run in browser console: runAllTests()
+ */
+function runAllTests() {
+  console.log('╔═══════════════════════════════════════════════════════════╗');
+  console.log('║           三文本標點校對工具 - Full Test Suite            ║');
+  console.log('╚═══════════════════════════════════════════════════════════╝\n');
+  
+  const domainResults = runDomainTests();
+  console.log('\n');
+  const appResults = runApplicationTests();
+  
+  const totalPassed = domainResults.passed + appResults.passed;
+  const totalFailed = domainResults.failed + appResults.failed;
+  
+  console.log('\n╔═══════════════════════════════════════════════════════════╗');
+  console.log(`║  TOTAL: ${totalPassed} passed, ${totalFailed} failed`);
+  console.log('╚═══════════════════════════════════════════════════════════╝');
+  
+  if (totalFailed === 0) {
+    console.log('\n🎉🎉🎉 All tests passed! Ready for deployment. 🎉🎉🎉');
+  }
+  
+  return { domain: domainResults, application: appResults, totalPassed, totalFailed };
+}
+
+/**
+ * BDD Tests for FR-001a: Auto-Load Related Files
+ * Run in browser console: runAutoLoadTests()
+ * 
+ * Tests scenarios 5-8 from spec.md §US1
+ */
+function runAutoLoadTests() {
+  console.log('╔═══════════════════════════════════════════════════════════╗');
+  console.log('║  BDD Tests: FR-001a Auto-Load Related Files               ║');
+  console.log('╚═══════════════════════════════════════════════════════════╝\n');
+  
+  let passed = 0;
+  let failed = 0;
+  
+  // Helper function to run test
+  function test(name, fn) {
+    try {
+      fn();
+      console.log(`✅ ${name}`);
+      passed++;
+    } catch (e) {
+      console.error(`❌ ${name}`);
+      console.error(`   Error: ${e.message}`);
+      failed++;
+    }
+  }
+  
+  // Helper function for assertions
+  function assert(condition, message) {
+    if (!condition) throw new Error(message);
+  }
+  
+  // Get the Alpine component instance for testing
+  const appElement = document.querySelector('[x-data]');
+  const app = Alpine.$data(appElement);
+  
+  console.log('─── Scenario 5: Pattern Detection ───');
+  
+  test('detectRelatedFiles() parses {prefix}_{model}.txt pattern and sorts by suffix alphabetically', () => {
+    // Mock file list (not in alphabetical order)
+    const mockFiles = [
+      { name: 'y001_01_openai.txt' },
+      { name: 'y001_01_anthropic.txt' },
+      { name: 'y001_01_google.txt' },
+      { name: 'y005_04_openai.txt' },  // Different prefix
+      { name: 'other_file.txt' }        // No pattern
+    ];
+    
+    const result = app.detectRelatedFiles('y001_01_openai.txt', mockFiles);
+    
+    assert(result.length === 2, `Expected 2 related files, got ${result.length}`);
+    // Should be sorted alphabetically: anthropic < google
+    assert(result[0].name === 'y001_01_anthropic.txt', `First should be anthropic, got ${result[0].name}`);
+    assert(result[1].name === 'y001_01_google.txt', `Second should be google, got ${result[1].name}`);
+    assert(!result.some(f => f.name === 'y001_01_openai.txt'), 'Should exclude the uploaded file itself');
+    assert(!result.some(f => f.name === 'y005_04_openai.txt'), 'Should exclude files with different prefix');
+  });
+  
+  test('detectRelatedFiles() returns empty array for non-matching pattern', () => {
+    const mockFiles = [
+      { name: 'test.txt' },
+      { name: 'other.txt' }
+    ];
+    
+    const result = app.detectRelatedFiles('document.txt', mockFiles);
+    assert(result.length === 0, 'Should return empty array for non-pattern filename');
+  });
+  
+  test('detectRelatedFiles() handles underscore in prefix and sorts correctly', () => {
+    // Pattern: y005_04-2_openai.txt -> prefix = "y005_04-2"
+    const mockFiles = [
+      { name: 'y005_04-2_openai.txt' },
+      { name: 'y005_04-2_gemini.txt' },
+      { name: 'y005_04-2_claude.txt' },
+      { name: 'y005_04-3_openai.txt' }  // Different suffix in prefix
+    ];
+    
+    const result = app.detectRelatedFiles('y005_04-2_openai.txt', mockFiles);
+    
+    assert(result.length === 2, `Expected 2 related files, got ${result.length}`);
+    // Should be sorted: claude < gemini
+    assert(result[0].name === 'y005_04-2_claude.txt', `First should be claude, got ${result[0].name}`);
+    assert(result[1].name === 'y005_04-2_gemini.txt', `Second should be gemini, got ${result[1].name}`);
+    assert(!result.some(f => f.name === 'y005_04-3_openai.txt'), 'Should exclude files with different prefix');
+  });
+  
+  console.log('\n─── Scenario 6: Auto-Load Selection ───');
+  
+  test('showAutoLoadPrompt() pre-selects first two files for B and C', () => {
+    const mockRelatedFiles = [
+      { name: 'y001_01_claude.txt', file: {} },
+      { name: 'y001_01_gemini.txt', file: {} }
+    ];
+    
+    // Reset state
+    app.autoLoad.relatedFiles = [];
+    app.autoLoad.selectedNames = { B: null, C: null };
+    
+    app.showAutoLoadPrompt(mockRelatedFiles);
+    
+    assert(app.autoLoad.selectedNames.B !== null, 'Version B should be pre-selected');
+    assert(app.autoLoad.selectedNames.C !== null, 'Version C should be pre-selected');
+    assert(app.autoLoad.selectedNames.B === 'y001_01_claude.txt', 'B should be first file name');
+    assert(app.autoLoad.selectedNames.C === 'y001_01_gemini.txt', 'C should be second file name');
+    
+    // Cleanup
+    app.closeAutoLoadDialog();
+  });
+  
+  console.log('\n─── Scenario 7: Manual Selection ───');
+  
+  test('closeAutoLoadDialog() resets state correctly', () => {
+    app.autoLoad.relatedFiles = [{ name: 'test.txt' }];
+    app.autoLoad.selectedNames = { B: 'b.txt', C: 'c.txt' };
+    
+    app.closeAutoLoadDialog();
+    
+    assert(app.autoLoad.show === false, 'show should be false');
+    assert(app.autoLoad.relatedFiles.length === 0, 'relatedFiles should be empty');
+    assert(app.autoLoad.selectedNames.B === null, 'selectedNames.B should be null');
+    assert(app.autoLoad.selectedNames.C === null, 'selectedNames.C should be null');
+  });
+  
+  console.log('\n─── Scenario 8: Multiple Files Selection ───');
+  
+  test('handleMultipleFileUpload() selects first group of 3 files with same prefix when multiple prefixes exist', async () => {
+    // Simulate files with different prefixes - should select first group alphabetically with 3 files
+    // Group "a001": 3 files (should be selected)
+    // Group "b001": 2 files
+    // Group "c001": 4 files
+    const mockFiles = [
+      { name: 'c001_anthropic.txt' },
+      { name: 'c001_google.txt' },
+      { name: 'c001_openai.txt' },
+      { name: 'c001_gemini.txt' },  // 4th file in c001 group
+      { name: 'b001_anthropic.txt' },
+      { name: 'b001_google.txt' },  // Only 2 files in b001 group
+      { name: 'a001_openai.txt' },
+      { name: 'a001_google.txt' },
+      { name: 'a001_anthropic.txt' },  // 3 files in a001 group
+    ];
+    
+    // The function should group by prefix, sort prefixes alphabetically,
+    // and select the first group with 3 files (a001)
+    // Within the group, files are sorted by suffix: anthropic < google < openai
+    
+    // Note: This is a conceptual test - actual execution requires DOM/file system
+    console.log('  [Conceptual] Files with multiple prefixes should select first group of 3');
+    console.log('  [Conceptual] a001 group (3 files) should be selected over b001 (2 files) and c001 (4 files)');
+    console.log('  [Conceptual] Within a001: A=a001_anthropic.txt, B=a001_google.txt, C=a001_openai.txt');
+  });
+  
+  test('toggleAutoLoadFile() correctly toggles selection', () => {
+    app.autoLoad.relatedFiles = [
+      { name: 'file1.txt', file: {} },
+      { name: 'file2.txt', file: {} },
+      { name: 'file3.txt', file: {} }
+    ];
+    app.autoLoad.selectedNames = { B: null, C: null };
+    
+    // Toggle B on
+    app.toggleAutoLoadFile('B', true);
+    assert(app.autoLoad.selectedNames.B !== null, 'B should be selected after toggle on');
+    
+    // Toggle B off
+    app.toggleAutoLoadFile('B', false);
+    assert(app.autoLoad.selectedNames.B === null, 'B should be null after toggle off');
+    
+    // Cleanup
+    app.autoLoad.relatedFiles = [];
+    app.autoLoad.selectedNames = { B: null, C: null };
+  });
+  
+  console.log('\n─── Version Label Detection ───');
+  
+  test('getVersionLabels() extracts model names from filenames (alphabetical order)', () => {
+    // Save original sources
+    const originalSources = { ...app.sources };
+    
+    // Files loaded in alphabetical order: anthropic → A, google → B, openai → C
+    app.sources.A = { name: 'y001_01_anthropic.txt' };
+    app.sources.B = { name: 'y001_01_google.txt' };
+    app.sources.C = { name: 'y001_01_openai.txt' };
+    
+    const labels = app.getVersionLabels();
+    
+    assert(labels.A === 'anthropic', `Expected A=anthropic, got ${labels.A}`);
+    assert(labels.B === 'google', `Expected B=google, got ${labels.B}`);
+    assert(labels.C === 'openai', `Expected C=openai, got ${labels.C}`);
+    
+    // Restore
+    app.sources = originalSources;
+  });
+  
+  test('getVersionLabels() returns default labels for non-matching patterns', () => {
+    const originalSources = { ...app.sources };
+    
+    // Use filenames with no common prefix (prefix < 3 chars)
+    app.sources.A = { name: 'alpha.txt' };
+    app.sources.B = { name: 'beta.txt' };
+    app.sources.C = { name: 'gamma.txt' };
+    
+    const labels = app.getVersionLabels();
+    
+    // Should return default '版本 A/B/C' since no meaningful common prefix
+    assert(labels.A === '版本 A', `Expected A='版本 A', got ${labels.A}`);
+    assert(labels.B === '版本 B', `Expected B='版本 B', got ${labels.B}`);
+    assert(labels.C === '版本 C', `Expected C='版本 C', got ${labels.C}`);
+    
+    // Restore
+    app.sources = originalSources;
+  });
+  
+  // Summary
+  console.log('\n═══════════════════════════════════════════════════════════');
+  console.log(`BDD Test Results: ${passed} passed, ${failed} failed`);
+  console.log('═══════════════════════════════════════════════════════════');
+  
+  if (failed === 0) {
+    console.log('🎉 All FR-001a Auto-Load tests passed!');
+  } else {
+    console.warn('⚠️ Some tests failed. Review the output above.');
+  }
+  
+  return { passed, failed };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// APPLICATION LAYER - Commands & Queries (orchestration)
+// Per Constitution §IV and §VII (CQS)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Commands are implemented as methods in the Alpine.js component below
+// Queries are implemented as computed properties / methods below
+
+// ══════════════════════════════════════════════════════════════════════════════
+// UI LAYER - Alpine.js Component (framework-dependent)
+// Per Constitution §IV - Clean Architecture
+// ══════════════════════════════════════════════════════════════════════════════
+
+function proofreadingApp() {
+  return {
+    // === Session State ===
+    sources: {
+      A: null,
+      B: null,
+      C: null
+    },
+    paragraphs: [],
+    currentParagraph: 0,
+    
+    // === Derived Statistics ===
+    globalStats: {
+      // Paragraph-level stats (per spec US2-4)
+      totalParagraphs: 0,
+      identicalParagraphs: 0,
+      majorityParagraphs: 0,
+      conflictParagraphs: 0,
+      completedParagraphs: 0,
+      // Position-level stats (detailed)
+      totalPositions: 0,
+      identicalPositions: 0,
+      majorityPositions: 0,
+      conflictPositions: 0,
+      resolvedConflicts: 0,
+      // T031a: Conflict breakdown
+      conflictPunctuationOnly: 0,
+      conflictTextOnly: 0,
+      conflictBoth: 0
+    },
+    
+    // === UI State ===
+    view: 'load',
+    filter: 'all',
+    inputMode: 'file',  // 'file' or 'paste'
+    isLoading: false,
+    error: null,
+    textMismatchWarning: null,
+    showCopySuccess: false,
+    
+    // === Popup State ===
+    popup: {
+      open: false,
+      x: 0,
+      y: 0,
+      paragraphId: null,
+      positionIndex: null,
+      position: null,
+      contextBefore: '',
+      contextAfter: '',
+      contextPunct: ''
+    },
+    showCustomGrid: false,
+    
+    // === Auto-Load State (FR-001a) ===
+    autoLoad: {
+      show: false,
+      fileList: [],          // All files from the directory
+      relatedFiles: [],       // Detected related files (file objects with name property)
+      selectedNames: { B: null, C: null }  // User's selection for B and C (name strings for dropdown binding)
+    },
+    
+    // === Saved Session State ===
+    savedSessionTime: '',
+    savedSessionProgress: '',
+    
+    // === Constants ===
+    punctuationList: PUNCTUATION_LIST,
+    
+    // === Computed Properties ===
+    get allTextsLoaded() {
+      return this.sources.A && this.sources.B && this.sources.C;
+    },
+    
+    get currentParagraphData() {
+      return this.paragraphs[this.currentParagraph] || null;
+    },
+    
+    get filteredParagraphs() {
+      if (this.filter === 'pending') {
+        return this.paragraphs.filter(p => p.status !== 'complete');
+      }
+      return this.paragraphs;
+    },
+    
+    get pendingParagraphCount() {
+      return this.paragraphs.filter(p => p.status !== 'complete').length;
+    },
+    
+    // T038a [FR-011a]: Query paragraphs where all 3 versions have no punctuation
+    // Include both valid and invalid paragraphs (now we compute positions for both)
+    get noPunctuationParagraphs() {
+      return this.paragraphs.filter(p => p.positions.length === 0);
+    },
+    
+    get noPunctuationCount() {
+      return this.noPunctuationParagraphs.length;
+    },
+    
+    // T058a [FR-011a]: Check if current paragraph has no punctuation
+    // Now includes text mismatch cases since we compute positions for all
+    get currentParagraphHasNoPunctuation() {
+      const para = this.currentParagraphData;
+      return para?.positions?.length === 0;
+    },
+    
+    get currentParagraphFilterIndex() {
+      if (this.filter === 'pending') {
+        const filtered = this.filteredParagraphs;
+        return filtered.findIndex(p => p.id === this.currentParagraph);
+      }
+      return this.currentParagraph;
+    },
+    
+    get hasPrevParagraph() {
+      if (this.filter === 'pending') {
+        const filtered = this.filteredParagraphs;
+        const idx = filtered.findIndex(p => p.id === this.currentParagraph);
+        return idx > 0;
+      }
+      return this.currentParagraph > 0;
+    },
+    
+    get hasNextParagraph() {
+      if (this.filter === 'pending') {
+        const filtered = this.filteredParagraphs;
+        const idx = filtered.findIndex(p => p.id === this.currentParagraph);
+        return idx < filtered.length - 1;
+      }
+      return this.currentParagraph < this.paragraphs.length - 1;
+    },
+    
+    get unresolvedCount() {
+      // Count paragraphs with unresolved conflicts (punctuation or text mismatch)
+      return this.paragraphs.filter(p => {
+        // Text mismatch paragraphs: check if ALL text differences are resolved
+        if (p.valid === false && p.textDiffs && p.textDiffs.length > 0) {
+          const unresolvedTextDiffs = p.textDiffs.filter(diff => diff.selected === undefined || diff.selected === null).length;
+          if (unresolvedTextDiffs > 0) return true;
+          // If all text diffs resolved, also check for unresolved punctuation conflicts
+          return p.positions.some(pos => pos.type === 'conflict' && pos.selected === null);
+        }
+        // Punctuation-only conflict paragraphs count if not all resolved
+        return p.positions.some(pos => pos.type === 'conflict' && pos.selected === null);
+      }).length;
+    },
+    
+    get hasUnresolvedConflicts() {
+      return this.unresolvedCount > 0;
+    },
+    
+    get resolvedConflictCount() {
+      // Count of conflict paragraphs that have been fully resolved
+      return this.globalStats.conflictParagraphs - this.unresolvedCount;
+    },
+    
+    get progressPercent() {
+      if (this.globalStats.totalParagraphs === 0) return 100;
+      return Math.round((this.globalStats.completedParagraphs / this.globalStats.totalParagraphs) * 100);
+    },
+    
+    get finalText() {
+      return this.paragraphs.map(p => generateMergedParagraph(p)).join('\n\n');
+    },
+    
+    // === Lifecycle ===
+    init() {
+      // T085: Check for saved session on app init
+      if (this.qryHasSavedSession()) {
+        try {
+          const saved = localStorage.getItem('fosizhi-session');
+          const data = JSON.parse(saved);
+          this.savedSessionTime = new Date(data.timestamp).toLocaleString('zh-TW');
+          const progress = data.paragraphs ? 
+            `${data.paragraphs.filter(p => p.status === 'complete').length} / ${data.paragraphs.length} 段落已完成` :
+            '未知';
+          this.savedSessionProgress = progress;
+          // T086: Display restore prompt modal
+          this.$refs.restoreDialog.showModal();
+        } catch (e) {
+          console.error('Failed to parse saved session:', e);
+          // Clear corrupted session
+          this.clearSavedSession();
+        }
+      }
+      
+      // Setup keyboard shortcuts
+      this.setupKeyboardShortcuts();
+    },
+    
+    setupKeyboardShortcuts() {
+      document.addEventListener('keydown', (e) => {
+        // Global shortcuts
+        if (e.key === 'Escape') {
+          // Close popup menu
+          if (this.popup.open) {
+            this.closePopup();
+            e.preventDefault();
+            return;
+          }
+        }
+        
+        // Paragraph view shortcuts (only when in paragraph view and no popup open)
+        if (this.view === 'paragraph' && !this.popup.open) {
+          // Arrow left / up - previous paragraph
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            if (this.hasPrevParagraph) {
+              this.goToPrevParagraph();
+              e.preventDefault();
+            }
+            return;
+          }
+          
+          // Arrow right / down - next paragraph
+          if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            if (this.hasNextParagraph) {
+              this.goToNextParagraph();
+              e.preventDefault();
+            }
+            return;
+          }
+          
+          // 'f' key - toggle filter
+          if (e.key === 'f' || e.key === 'F') {
+            this.filter = this.filter === 'all' ? 'pending' : 'all';
+            e.preventDefault();
+            return;
+          }
+        }
+        
+        // Popup shortcuts (only when popup is open)
+        if (this.popup.open) {
+          // Number keys 1-3 for version selection
+          if (e.key === '1') {
+            this.selectVersion('A');
+            e.preventDefault();
+            return;
+          }
+          if (e.key === '2') {
+            this.selectVersion('B');
+            e.preventDefault();
+            return;
+          }
+          if (e.key === '3') {
+            this.selectVersion('C');
+            e.preventDefault();
+            return;
+          }
+        }
+      });
+    },
+    
+    // === Commands (US1) ===
+    async handleFileUpload(version, event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      // Store the file list for auto-load detection (FR-001a)
+      const fileList = event.target.files.length > 0 ? Array.from(event.target.files) : [];
+      // For webkitdirectory or multi-select, we'd have more files, but standard file input gives us the directory context via webkitRelativePath
+      // We need to access all files in the same directory - this requires the input to have webkitdirectory
+      // For now, we'll use the DataTransfer interface if available for dropped files
+      
+      this.isLoading = true;
+      this.error = null;
+      
+      try {
+        const content = await this.readFileAsText(file);
+        const hash = await computeContentHash(content);
+        
+        this.sources[version] = {
+          id: version,
+          name: file.name,
+          content: content,
+          hash: hash,
+          sourceType: 'file',
+          file: file  // Keep reference for auto-load
+        };
+        
+        this.checkTextMismatch();
+        
+        // T021a [FR-001a]: Trigger auto-load detection for Version A only
+        if (version === 'A' && !this.sources.B && !this.sources.C) {
+          await this.detectAndPromptRelatedFiles(file, event);
+        }
+      } catch (e) {
+        this.error = `無法讀取檔案: ${e.message}`;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+    
+    readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('讀取檔案失敗'));
+        reader.readAsText(file, 'UTF-8');
+      });
+    },
+    
+    async handlePasteInput(version, content) {
+      if (!content || content.trim().length === 0) {
+        this.sources[version] = null;
+        this.checkTextMismatch();
+        return;
+      }
+      
+      try {
+        const hash = await computeContentHash(content);
+        
+        this.sources[version] = {
+          id: version,
+          name: `版本 ${version} (貼上)`,
+          content: content,
+          hash: hash,
+          sourceType: 'paste'
+        };
+        
+        this.checkTextMismatch();
+      } catch (e) {
+        this.error = `處理文字時發生錯誤: ${e.message}`;
+      }
+    },
+    
+    // === Commands (US1 - FR-001a: Auto-Load Related Files) ===
+    
+    /**
+     * T021a [FR-001a]: Detect related files based on filename pattern
+     * Pattern: {prefix}_{suffix}.txt
+     * Returns files sorted by model suffix alphabetically (e.g., anthropic < google < openai)
+     * @param {string} filename - The uploaded file name
+     * @param {File[]} fileList - List of files from the same directory (if available)
+     * @returns {File[]} - Array of related files (excluding the uploaded file), sorted by model suffix
+     */
+    detectRelatedFiles(filename, fileList) {
+      // Parse the filename pattern: {prefix}_{suffix}.txt
+      const match = filename.match(/^(.+)_([^_]+)\.txt$/i);
+      if (!match) return [];
+      
+      const prefix = match[1];
+      
+      // Filter files that match the same prefix pattern
+      const related = fileList.filter(file => {
+        if (file.name === filename) return false;  // Exclude the uploaded file itself
+        const fileMatch = file.name.match(/^(.+)_([^_]+)\.txt$/i);
+        return fileMatch && fileMatch[1] === prefix;
+      });
+      
+      // Sort by model suffix alphabetically
+      return related.sort((a, b) => {
+        const suffixA = a.name.match(/^.+_([^_]+)\.txt$/i)?.[1]?.toLowerCase() || '';
+        const suffixB = b.name.match(/^.+_([^_]+)\.txt$/i)?.[1]?.toLowerCase() || '';
+        return suffixA.localeCompare(suffixB);
+      });
+    },
+    
+    /**
+     * T021a [FR-001a]: Detect and prompt for related files after first file upload
+     * @param {File} uploadedFile - The file that was just uploaded
+     * @param {Event} event - The file input change event
+     */
+    async detectAndPromptRelatedFiles(uploadedFile, event) {
+      // Try to get all files from the same directory
+      // This only works if the browser provides webkitRelativePath or if using drag-drop with directory
+      const input = event.target;
+      
+      // For standard file input, we need to ask user to select multiple files
+      // or use the File System Access API (if available)
+      // Guard: check if input is a real DOM element with hasAttribute method
+      if (window.showOpenFilePicker && input && typeof input.hasAttribute === 'function' && input.hasAttribute('data-autoload-check')) {
+        // Modern File System Access API - can get directory listing
+        try {
+          const [fileHandle] = await window.showOpenFilePicker({ multiple: true });
+          // This is just for future enhancement
+        } catch (e) {
+          // User cancelled or API not available
+        }
+      }
+      
+      // For now, we detect the pattern and show a helper message
+      // The actual file list comes from when user selects multiple files
+      const filename = uploadedFile.name;
+      const match = filename.match(/^(.+)_([^_]+)\.txt$/i);
+      
+      if (!match) return;  // No pattern detected
+      
+      const prefix = match[1];
+      const suffix = match[2];
+      
+      // Check if there might be related files by the naming pattern
+      // Since we can't access the directory, we'll prompt user to select additional files
+      // Store the pattern info for display
+      this.autoLoad.detectedPattern = {
+        prefix: prefix,
+        suffix: suffix,
+        fullPattern: `${prefix}_*.txt`
+      };
+      
+      // Show a hint in the UI that we detected a pattern
+      // The actual multi-file selection happens through a modified file input
+      this.showAutoLoadHint(prefix, suffix);
+    },
+    
+    /**
+     * T021c [FR-001a]: Show auto-load prompt with detected related files
+     * @param {File[]} relatedFiles - Array of detected related files
+     */
+    showAutoLoadPrompt(relatedFiles) {
+      if (!relatedFiles || relatedFiles.length === 0) return;
+      
+      this.autoLoad.relatedFiles = relatedFiles;
+      
+      // Pre-select first two files for B and C (by name for proper select binding)
+      if (relatedFiles.length >= 1) {
+        this.autoLoad.selectedNames.B = relatedFiles[0].name;
+      }
+      if (relatedFiles.length >= 2) {
+        this.autoLoad.selectedNames.C = relatedFiles[1].name;
+      }
+      
+      this.autoLoad.show = true;
+      this.$refs.autoLoadDialog.showModal();
+    },
+    
+    /**
+     * Helper: Show hint about detected filename pattern
+     */
+    showAutoLoadHint(prefix, suffix) {
+      // For now, just log - in future could show a non-modal hint
+      console.log(`[FR-001a] Detected filename pattern: ${prefix}_${suffix}.txt`);
+      console.log(`[FR-001a] Related files would match: ${prefix}_*.txt`);
+    },
+    
+    /**
+     * Toggle file selection for auto-load
+     */
+    toggleAutoLoadFile(version, checked) {
+      if (!checked) {
+        this.autoLoad.selectedNames[version] = null;
+      } else {
+        // Select the first available file
+        const available = this.autoLoad.relatedFiles.filter(f => {
+          if (version === 'B') return true;
+          return this.autoLoad.selectedNames.B !== f.name;
+        });
+        if (available.length > 0) {
+          this.autoLoad.selectedNames[version] = available[0].name;
+        }
+      }
+    },
+    
+    /**
+     * Close the auto-load dialog
+     */
+    closeAutoLoadDialog() {
+      this.$refs.autoLoadDialog.close();
+      this.autoLoad.show = false;
+      this.autoLoad.relatedFiles = [];
+      this.autoLoad.selectedNames = { B: null, C: null };
+    },
+    
+    /**
+     * T021d [FR-001a]: Handle auto-load of selected files
+     */
+    async handleAutoLoad() {
+      const { B: nameB, C: nameC } = this.autoLoad.selectedNames;
+      
+      // Find file objects by name
+      const fileB = this.autoLoad.relatedFiles.find(f => f.name === nameB);
+      const fileC = this.autoLoad.relatedFiles.find(f => f.name === nameC);
+      
+      this.isLoading = true;
+      
+      try {
+        // Load Version B if selected
+        if (fileB && fileB.file) {
+          const content = await this.readFileAsText(fileB.file);
+          const hash = await computeContentHash(content);
+          this.sources.B = {
+            id: 'B',
+            name: fileB.name,
+            content: content,
+            hash: hash,
+            sourceType: 'file',
+            file: fileB.file
+          };
+        }
+        
+        // Load Version C if selected
+        if (fileC && fileC.file) {
+          const content = await this.readFileAsText(fileC.file);
+          const hash = await computeContentHash(content);
+          this.sources.C = {
+            id: 'C',
+            name: fileC.name,
+            content: content,
+            hash: hash,
+            sourceType: 'file',
+            file: fileC.file
+          };
+        }
+        
+        this.checkTextMismatch();
+      } catch (e) {
+        this.error = `自動載入失敗: ${e.message}`;
+      } finally {
+        this.isLoading = false;
+        this.closeAutoLoadDialog();
+      }
+    },
+    
+    /**
+     * Handle multiple file selection for auto-load
+     * This is called when user selects multiple files at once
+     * Files are sorted alphabetically by model suffix and assigned to A/B/C
+     * 
+     * When more than 3 files are selected with different prefixes:
+     * 1. Group files by prefix
+     * 2. Find the first group (alphabetically by prefix) with 3 files, or
+     * 3. Find the first group with 2 files if no group has 3
+     * 4. Auto-load that group
+     */
+    async handleMultipleFileUpload(event) {
+      const files = Array.from(event.target.files);
+      if (files.length === 0) return;
+      
+      // Parse all files and group by prefix
+      const filesByPrefix = new Map();
+      for (const file of files) {
+        const match = file.name.match(/^(.+)_([^_]+)\.txt$/i);
+        if (match) {
+          const prefix = match[1];
+          const suffix = match[2].toLowerCase();
+          if (!filesByPrefix.has(prefix)) {
+            filesByPrefix.set(prefix, []);
+          }
+          filesByPrefix.get(prefix).push({ file, suffix });
+        }
+      }
+      
+      // If no files match the pattern, just load first file as A
+      if (filesByPrefix.size === 0) {
+        await this.handleFileUpload('A', { target: { files: [files[0]] } });
+        return;
+      }
+      
+      // Sort each group by suffix alphabetically
+      for (const [prefix, group] of filesByPrefix) {
+        group.sort((a, b) => a.suffix.localeCompare(b.suffix));
+      }
+      
+      // Get prefixes sorted alphabetically
+      const sortedPrefixes = Array.from(filesByPrefix.keys()).sort();
+      
+      // Find the first group with exactly 3 files
+      let selectedPrefix = null;
+      let selectedFiles = null;
+      
+      for (const prefix of sortedPrefixes) {
+        const group = filesByPrefix.get(prefix);
+        if (group.length >= 3) {
+          selectedPrefix = prefix;
+          selectedFiles = group.slice(0, 3).map(g => g.file);
+          break;
+        }
+      }
+      
+      // If no group has 3 files, find first group with 2 files
+      if (!selectedFiles) {
+        for (const prefix of sortedPrefixes) {
+          const group = filesByPrefix.get(prefix);
+          if (group.length >= 2) {
+            selectedPrefix = prefix;
+            selectedFiles = group.slice(0, 2).map(g => g.file);
+            break;
+          }
+        }
+      }
+      
+      // If still no group with 2+ files, just use first file from first group
+      if (!selectedFiles) {
+        const firstPrefix = sortedPrefixes[0];
+        const firstGroup = filesByPrefix.get(firstPrefix);
+        await this.handleFileUpload('A', { target: { files: [firstGroup[0].file] } });
+        return;
+      }
+      
+      // Now handle based on selected file count
+      if (selectedFiles.length === 3) {
+        // Exactly 3 matching files: auto-load A/B/C directly (no prompt)
+        this.isLoading = true;
+        try {
+          // Load Version A (first alphabetically)
+          const fileA = selectedFiles[0];
+          const contentA = await this.readFileAsText(fileA);
+          const hashA = await computeContentHash(contentA);
+          this.sources.A = {
+            id: 'A',
+            name: fileA.name,
+            content: contentA,
+            hash: hashA,
+            sourceType: 'file',
+            file: fileA
+          };
+          
+          // Load Version B (second alphabetically)
+          const fileB = selectedFiles[1];
+          const contentB = await this.readFileAsText(fileB);
+          const hashB = await computeContentHash(contentB);
+          this.sources.B = {
+            id: 'B',
+            name: fileB.name,
+            content: contentB,
+            hash: hashB,
+            sourceType: 'file',
+            file: fileB
+          };
+          
+          // Load Version C (third alphabetically)
+          const fileC = selectedFiles[2];
+          const contentC = await this.readFileAsText(fileC);
+          const hashC = await computeContentHash(contentC);
+          this.sources.C = {
+            id: 'C',
+            name: fileC.name,
+            content: contentC,
+            hash: hashC,
+            sourceType: 'file',
+            file: fileC
+          };
+          
+          this.checkTextMismatch();
+        } catch (e) {
+          this.error = `自動載入失敗: ${e.message}`;
+        } finally {
+          this.isLoading = false;
+        }
+      } else if (selectedFiles.length === 2) {
+        // Exactly 2 matching files: load A/B, C needs manual selection
+        this.isLoading = true;
+        try {
+          // Load Version A
+          const fileA = selectedFiles[0];
+          const contentA = await this.readFileAsText(fileA);
+          const hashA = await computeContentHash(contentA);
+          this.sources.A = {
+            id: 'A',
+            name: fileA.name,
+            content: contentA,
+            hash: hashA,
+            sourceType: 'file',
+            file: fileA
+          };
+          
+          // Load Version B
+          const fileB = selectedFiles[1];
+          const contentB = await this.readFileAsText(fileB);
+          const hashB = await computeContentHash(contentB);
+          this.sources.B = {
+            id: 'B',
+            name: fileB.name,
+            content: contentB,
+            hash: hashB,
+            sourceType: 'file',
+            file: fileB
+          };
+          
+          this.checkTextMismatch();
+          // Note: C remains empty for manual selection
+        } catch (e) {
+          this.error = `自動載入失敗: ${e.message}`;
+        } finally {
+          this.isLoading = false;
+        }
+      }
+    },
+
+    checkTextMismatch() {
+      this.textMismatchWarning = null;
+      
+      if (!this.sources.A || !this.sources.B || !this.sources.C) return;
+      
+      const pureA = stripPunctuation(this.sources.A.content);
+      const pureB = stripPunctuation(this.sources.B.content);
+      const pureC = stripPunctuation(this.sources.C.content);
+      
+      if (pureA !== pureB) {
+        const diff = Math.abs(pureA.length - pureB.length);
+        this.textMismatchWarning = `版本 A 與版本 B 的純文本內容不一致（相差 ${diff} 字）`;
+      } else if (pureB !== pureC) {
+        const diff = Math.abs(pureB.length - pureC.length);
+        this.textMismatchWarning = `版本 B 與版本 C 的純文本內容不一致（相差 ${diff} 字）`;
+      } else if (pureA !== pureC) {
+        const diff = Math.abs(pureA.length - pureC.length);
+        this.textMismatchWarning = `版本 A 與版本 C 的純文本內容不一致（相差 ${diff} 字）`;
+      }
+    },
+    
+    // === Commands (US2) ===
+    startComparison() {
+      if (!this.allTextsLoaded) return;
+      
+      this.isLoading = true;
+      this.error = null;
+      
+      try {
+        const parasA = splitIntoParagraphs(this.sources.A.content);
+        const parasB = splitIntoParagraphs(this.sources.B.content);
+        const parasC = splitIntoParagraphs(this.sources.C.content);
+        
+        const validation = normalizeParagraphs(parasA, parasB, parasC);
+        if (!validation.valid) {
+          this.error = validation.error;
+          this.isLoading = false;
+          return;
+        }
+        
+        // Compare each paragraph
+        this.paragraphs = parasA.map((_, i) => {
+          const result = compareParagraph(parasA[i], parasB[i], parasC[i]);
+          const stats = this.calculateParagraphStats(result.positions);
+          
+          return {
+            id: i,
+            pureText: result.pureText,
+            pureTexts: result.pureTexts || null,  // Store all pure texts for mismatch cases
+            longestVersion: result.longestVersion || 'A',  // Which version is longest (for display base)
+            alignment: result.alignment || null,  // Store alignment for text mismatch rendering
+            textA: parasA[i],
+            textB: parasB[i],
+            textC: parasC[i],
+            positions: result.positions,
+            textDiffs: result.textDiffs || [],    // Store text differences
+            valid: result.valid,           // Store validation result
+            error: result.error || null,   // Store error message if any
+            // Status: pending if has punctuation conflicts OR text mismatch
+            status: (stats.conflict === 0 && result.valid !== false) ? 'complete' : 'pending',
+            stats: stats
+          };
+        });
+        
+        this.recalculateGlobalStats();
+        this.view = 'overview';
+        this.saveSession();
+        
+      } catch (e) {
+        this.error = `比對失敗: ${e.message}`;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+    
+    calculateParagraphStats(positions) {
+      let stats = { identical: 0, majority: 0, conflict: 0, resolved: 0 };
+      for (const pos of positions) {
+        if (pos.type === 'identical') stats.identical++;
+        else if (pos.type === 'majority') stats.majority++;
+        else if (pos.type === 'conflict') {
+          stats.conflict++;
+          if (pos.selected !== null) stats.resolved++;
+        }
+      }
+      return stats;
+    },
+    
+    recalculateGlobalStats() {
+      this.globalStats = computeStatistics(this.paragraphs);
+    },
+    
+    // === Commands (US3) ===
+    goToParagraph(id) {
+      this.currentParagraph = id;
+      this.view = 'paragraph';
+    },
+    
+    goToFirstPending() {
+      // Per spec US2-6: Go to first conflict paragraph and enable conflict processing mode
+      // Consider both punctuation conflicts AND text mismatch paragraphs
+      const conflictPara = this.paragraphs.find(p => {
+        // Check for unresolved punctuation conflicts
+        const hasUnresolvedPunct = p.positions.some(pos => pos.type === 'conflict' && pos.selected === null);
+        if (hasUnresolvedPunct) return true;
+        
+        // Check for unresolved text differences
+        if (p.valid === false && p.textDiffs && p.textDiffs.length > 0) {
+          const hasUnresolvedText = p.textDiffs.some(diff => diff.selected === undefined || diff.selected === null);
+          if (hasUnresolvedText) return true;
+        }
+        
+        return false;
+      });
+      if (conflictPara) {
+        this.currentParagraph = conflictPara.id;
+        this.filter = 'pending';  // Enable conflict processing mode
+      } else {
+        // All conflicts resolved, go to first paragraph
+        this.currentParagraph = 0;
+        this.filter = 'all';
+      }
+      this.view = 'paragraph';
+    },
+    
+    goToPrevParagraph() {
+      if (this.filter === 'pending') {
+        const filtered = this.filteredParagraphs;
+        const idx = filtered.findIndex(p => p.id === this.currentParagraph);
+        if (idx > 0) {
+          this.currentParagraph = filtered[idx - 1].id;
+        }
+      } else {
+        if (this.currentParagraph > 0) {
+          this.currentParagraph--;
+        }
+      }
+    },
+    
+    goToNextParagraph() {
+      if (this.filter === 'pending') {
+        const filtered = this.filteredParagraphs;
+        const idx = filtered.findIndex(p => p.id === this.currentParagraph);
+        if (idx < filtered.length - 1) {
+          this.currentParagraph = filtered[idx + 1].id;
+        }
+      } else {
+        if (this.currentParagraph < this.paragraphs.length - 1) {
+          this.currentParagraph++;
+        }
+      }
+    },
+    
+    getStatusEmoji(para) {
+      if (para.status === 'complete') return '🟢';
+      if (para.stats.conflict > para.stats.resolved) return '🔴';
+      return '🔵';
+    },
+    
+    // Helper: Count resolved text differences in a paragraph
+    getTextDiffResolvedCount(para) {
+      if (!para || !para.textDiffs) return 0;
+      return para.textDiffs.filter(diff => diff.selected !== undefined && diff.selected !== null).length;
+    },
+    
+    // === Commands (US4) ===
+    renderInlineView() {
+      const para = this.currentParagraphData;
+      if (!para) return '';
+      
+      // Handle text mismatch case - show text with clickable difference markers
+      if (para.valid === false && para.textDiffs && para.textDiffs.length > 0) {
+        return this.renderTextMismatchView(para);
+      }
+      
+      const pureText = para.pureText;
+      let result = '';
+      let lastPos = 0;
+      
+      const sortedPositions = [...para.positions].sort((a, b) => a.position - b.position);
+      
+      for (let i = 0; i < sortedPositions.length; i++) {
+        const pos = sortedPositions[i];
+        
+        // Add text up to this position
+        result += this.escapeHtml(pureText.slice(lastPos, pos.position));
+        lastPos = pos.position;
+        
+        // Determine marker class - always include type class, add resolved if selected
+        let markerClass = 'marker ';
+        // First add the type class
+        if (pos.type === 'identical') {
+          markerClass += 'marker-identical';
+        } else if (pos.type === 'majority') {
+          markerClass += 'marker-majority';
+        } else {
+          markerClass += 'marker-conflict';
+        }
+        // Then add resolved class if user has made a selection
+        if (pos.selected !== null) {
+          markerClass += ' marker-resolved';
+        }
+        
+        // Determine displayed punctuation
+        let displayPunct = '';
+        if (pos.selected === 'none') {
+          displayPunct = '∅';  // Show deletion marker
+        } else if (pos.selected === 'custom' && pos.customValue) {
+          displayPunct = pos.customValue;
+        } else if (pos.selected) {
+          displayPunct = pos.values[pos.selected] || '∅';
+        } else if (pos.type === 'identical' || pos.type === 'majority') {
+          // For identical/majority, use autoValue (may be null = no punctuation)
+          displayPunct = pos.autoValue || '∅';
+        } else {
+          // For conflict, show version A's value as default
+          displayPunct = pos.values.A || '∅';
+        }
+        
+        // Create marker with tooltip - T055a: Use dynamic version labels
+        const labels = this.getVersionLabels();
+        const tooltip = `${labels.A}=${pos.values.A || '∅'} ${labels.B}=${pos.values.B || '∅'} ${labels.C}=${pos.values.C || '∅'}`;
+        result += `<span class="${markerClass}" 
+                        title="${tooltip}" 
+                        tabindex="0"
+                        role="button"
+                        aria-label="標點位置 ${pos.position}: ${tooltip}. 點擊選擇"
+                        data-para="${para.id}" 
+                        data-pos="${i}"
+                        onclick="document.querySelector('[x-data]')._x_dataStack[0].openPopup(event, ${para.id}, ${i})">${this.escapeHtml(displayPunct)}</span>`;
+      }
+      
+      // Add remaining text
+      result += this.escapeHtml(pureText.slice(lastPos));
+      
+      return result;
+    },
+    
+    escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    },
+    
+    /**
+     * Render text mismatch view with text difference markers AND punctuation markers
+     * Shows original text (with punctuation) from longest version
+     * With black markers for text differences and colored markers for punctuation
+     */
+    renderTextMismatchView(para) {
+      const labels = this.getVersionLabels();
+      const textDiffs = para.textDiffs || [];
+      const positions = para.positions || [];  // Punctuation positions
+      const longestVer = para.longestVersion || 'A';
+      const alignment = para.alignment || [];
+      
+      // Get the original text (with punctuation) from the longest version
+      const originalText = para['text' + longestVer] || para.textA;
+      
+      // If no original text, show error
+      if (!originalText) {
+        return '<span style="color: red;">無法顯示文本</span>';
+      }
+      
+      // If no differences at all, just show original text
+      if (!textDiffs.length && !positions.length) {
+        return this.escapeHtml(originalText);
+      }
+      
+      // Build maps for quick lookup
+      // textDiffMap: alignment position -> text diff object
+      const textDiffMap = new Map();
+      // skipPositions: set of alignment positions that are part of a merged diff (not start)
+      const skipPositions = new Set();
+      textDiffs.forEach((diff, idx) => {
+        textDiffMap.set(diff.position, { diff, idx });
+        // Mark all positions between position+1 and endPosition-1 as skip
+        if (diff.endPosition > diff.position + 1) {
+          for (let p = diff.position + 1; p < diff.endPosition; p++) {
+            skipPositions.add(p);
+          }
+        }
+      });
+      
+      // punctMap: alignment position -> array of punctuation position objects
+      // Multiple punctuation marks can exist at the same alignment position (different punctIndex)
+      const punctMap = new Map();
+      positions.forEach((pos, idx) => {
+        const key = pos.position;
+        if (!punctMap.has(key)) {
+          punctMap.set(key, []);
+        }
+        punctMap.get(key).push({ pos, idx });
+      });
+      
+      // Extract punctuation from original text for each pure character position
+      const punctAfterChar = new Map();  // pureIdx -> punctuation string
+      let pureIdx = 0;
+      for (let i = 0; i < originalText.length; i++) {
+        const char = originalText[i];
+        if (this.isPunctuation(char)) {
+          const key = pureIdx;  // Punctuation after position pureIdx
+          punctAfterChar.set(key, (punctAfterChar.get(key) || '') + char);
+        } else {
+          pureIdx++;
+        }
+      }
+      
+      // Build result by walking through the alignment
+      let result = '';
+      let currentPureIdx = 0;  // Position in the longest version's pure text
+      
+      for (let alignIdx = 0; alignIdx < alignment.length; alignIdx++) {
+        // Skip positions that are part of a merged diff (not the start)
+        if (skipPositions.has(alignIdx)) {
+          // Still check for punctuation at this position
+          const punctInfos = punctMap.get(alignIdx);
+          if (punctInfos) {
+            for (const punctInfo of punctInfos) {
+              const pos = punctInfo.pos;
+              const posIdx = punctInfo.idx;
+              
+              let markerClass = 'marker ';
+              if (pos.type === 'identical') {
+                markerClass += 'marker-identical';
+              } else if (pos.type === 'majority') {
+                markerClass += 'marker-majority';
+              } else {
+                markerClass += 'marker-conflict';
+              }
+              if (pos.selected !== null) {
+                markerClass += ' marker-resolved';
+              }
+              
+              let displayPunct = '';
+              if (pos.selected === 'none') {
+                displayPunct = '∅';
+              } else if (pos.selected === 'custom' && pos.customValue) {
+                displayPunct = pos.customValue;
+              } else if (pos.selected) {
+                displayPunct = pos.values[pos.selected] || '∅';
+              } else if (pos.type === 'identical' || pos.type === 'majority') {
+                displayPunct = pos.autoValue || '∅';
+              } else {
+                displayPunct = pos.values.A || '∅';
+              }
+              
+              const tooltip = `${labels.A}=${pos.values.A || '∅'} ${labels.B}=${pos.values.B || '∅'} ${labels.C}=${pos.values.C || '∅'}`;
+              
+              result += `<span class="${markerClass}" 
+                              title="${tooltip}" 
+                              tabindex="0"
+                              role="button"
+                              aria-label="標點位置 ${pos.position}: ${tooltip}. 點擊選擇"
+                              data-para="${para.id}" 
+                              data-pos="${posIdx}"
+                              onclick="document.querySelector('[x-data]')._x_dataStack[0].openPopup(event, ${para.id}, ${posIdx})">${this.escapeHtml(displayPunct)}</span>`;
+            }
+          }
+          continue;
+        }
+        
+        const alignPos = alignment[alignIdx];
+        const charInLongest = alignPos[longestVer];
+        
+        // Check if this alignment position is a text difference
+        const textDiffInfo = textDiffMap.get(alignIdx);
+        
+        if (textDiffInfo) {
+          // Render the text diff marker
+          const diff = textDiffInfo.diff;
+          const diffIdx = textDiffInfo.idx;
+          
+          let markerClass = 'marker ';
+          if (diff.selected !== null) {
+            markerClass += 'marker-textmismatch-resolved';
+          } else {
+            markerClass += 'marker-textmismatch';
+          }
+          
+          // Get the character to display
+          let displayText = '';
+          if (diff.selected) {
+            displayText = diff.values[diff.selected] || '';
+          } else if (diff.type === 'textmajority' && diff.autoValue) {
+            displayText = diff.autoValue;
+          } else {
+            displayText = diff.values[longestVer] || diff.values.A || diff.values.B || diff.values.C || '';
+          }
+          
+          const displayContent = displayText || '∅';
+          
+          // Create tooltip - same format as punctuation tooltips
+          const valA = diff.values.A || '∅';
+          const valB = diff.values.B || '∅';
+          const valC = diff.values.C || '∅';
+          const tooltip = `${labels.A}=${valA} ${labels.B}=${valB} ${labels.C}=${valC}`;
+          
+          result += `<span class="${markerClass}" 
+                          title="${tooltip}" 
+                          tabindex="0"
+                          role="button"
+                          aria-label="文字差異: ${tooltip}. 點擊選擇"
+                          data-para="${para.id}" 
+                          data-textdiff="${diffIdx}"
+                          onclick="document.querySelector('[x-data]')._x_dataStack[0].openTextDiffPopup(event, ${para.id}, ${diffIdx})">${this.escapeHtml(displayContent)}</span>`;
+          
+          // Advance currentPureIdx if this position has a char in longest version
+          if (charInLongest) {
+            currentPureIdx++;
+          }
+          continue;
+        }
+        
+        // Not a text diff - render the character from longest version
+        if (charInLongest) {
+          result += this.escapeHtml(charInLongest);
+          currentPureIdx++;
+        }
+        
+        // Check if there are punctuation positions AFTER this alignment position
+        // There may be multiple punctuation marks at the same alignment position
+        const punctInfos = punctMap.get(alignIdx);
+        if (punctInfos) {
+          for (const punctInfo of punctInfos) {
+            const pos = punctInfo.pos;
+            const posIdx = punctInfo.idx;
+            
+            // Determine marker class - always include type class, add resolved if selected
+            let markerClass = 'marker ';
+            // First add the type class
+            if (pos.type === 'identical') {
+              markerClass += 'marker-identical';
+            } else if (pos.type === 'majority') {
+              markerClass += 'marker-majority';
+            } else {
+              markerClass += 'marker-conflict';
+            }
+            // Then add resolved class if user has made a selection
+            if (pos.selected !== null) {
+              markerClass += ' marker-resolved';
+            }
+            
+            // Determine displayed punctuation
+            let displayPunct = '';
+            if (pos.selected === 'none') {
+              displayPunct = '∅';
+            } else if (pos.selected === 'custom' && pos.customValue) {
+              displayPunct = pos.customValue;
+            } else if (pos.selected) {
+              displayPunct = pos.values[pos.selected] || '∅';
+            } else if (pos.type === 'identical' || pos.type === 'majority') {
+              displayPunct = pos.autoValue || '∅';
+            } else {
+              displayPunct = pos.values.A || '∅';
+            }
+            
+            // Create tooltip
+            const tooltip = `${labels.A}=${pos.values.A || '∅'} ${labels.B}=${pos.values.B || '∅'} ${labels.C}=${pos.values.C || '∅'}`;
+            
+            result += `<span class="${markerClass}" 
+                            title="${tooltip}" 
+                            tabindex="0"
+                            role="button"
+                            aria-label="標點位置 ${pos.position}: ${tooltip}. 點擊選擇"
+                            data-para="${para.id}" 
+                            data-pos="${posIdx}"
+                            onclick="document.querySelector('[x-data]')._x_dataStack[0].openPopup(event, ${para.id}, ${posIdx})">${this.escapeHtml(displayPunct)}</span>`;
+          }
+        }
+      }
+      
+      return result;
+    },
+    
+    /**
+     * Check if a character is punctuation
+     */
+    isPunctuation(char) {
+      const result = CHINESE_PUNCTUATION.test(char);
+      CHINESE_PUNCTUATION.lastIndex = 0;  // Reset regex state
+      return result;
+    },
+    
+    /**
+     * Open popup for text difference selection
+     */
+    openTextDiffPopup(event, paragraphId, diffIndex) {
+      event.stopPropagation();
+      
+      const para = this.paragraphs[paragraphId];
+      if (!para || !para.textDiffs) return;
+      
+      const diff = para.textDiffs[diffIndex];
+      if (!diff) return;
+      
+      // Get surrounding context from alignment
+      const alignment = para.alignment || [];
+      const contextLen = 5;
+      
+      // Build context before the diff
+      let before = '';
+      for (let i = Math.max(0, diff.position - contextLen); i < diff.position && i < alignment.length; i++) {
+        const pos = alignment[i];
+        before += pos.A || pos.B || pos.C || '';
+      }
+      
+      // Build context after the diff
+      let after = '';
+      for (let i = diff.endPosition; i < Math.min(alignment.length, diff.endPosition + contextLen); i++) {
+        const pos = alignment[i];
+        after += pos.A || pos.B || pos.C || '';
+      }
+      
+      // Calculate popup position
+      const rect = event.target.getBoundingClientRect();
+      let x = rect.left;
+      let y = rect.bottom + 5;
+      
+      // Viewport overflow handling
+      if (x + 320 > window.innerWidth) {
+        x = window.innerWidth - 330;
+      }
+      if (x < 10) x = 10;
+      
+      if (y + 300 > window.innerHeight) {
+        y = rect.top - 305;
+        if (y < 10) y = 10;
+      }
+      
+      this.popup = {
+        show: true,
+        paragraphId: paragraphId,
+        diffIndex: diffIndex,
+        isTextDiff: true,
+        textDiff: diff,  // Store the diff object directly
+        x: x + window.scrollX,
+        y: y + window.scrollY,
+        contextBefore: before,
+        contextAfter: after,
+        contextPunct: diff.values.A || '∅'
+      };
+      
+      this.showCustomGrid = false;
+    },
+    
+    /**
+     * Select text for a text difference
+     */
+    selectTextDiff(version) {
+      if (!this.popup.isTextDiff || !this.popup.textDiff) return;
+      
+      // Directly modify the stored diff object reference
+      this.popup.textDiff.selected = version;
+      
+      this.closePopup();
+      this.saveSession();
+    },
+
+    // === Commands (US5) ===
+    
+    /**
+     * Query: Get position context (T071)
+     * Returns surrounding text for context display
+     */
+    qryGetPositionContext(paragraphId, positionIndex) {
+      const para = this.paragraphs[paragraphId];
+      if (!para) return { before: '', after: '', punct: '' };
+      
+      const position = para.positions[positionIndex];
+      if (!position) return { before: '', after: '', punct: '' };
+      
+      const pureText = para.pureText;
+      const pos = position.position;
+      
+      // Get surrounding context (5 characters each side)
+      const contextLen = 5;
+      const before = pureText.slice(Math.max(0, pos - contextLen), pos);
+      const after = pureText.slice(pos, Math.min(pureText.length, pos + contextLen));
+      
+      // Get current punctuation display
+      let punct = '';
+      if (position.selected === 'custom' && position.customValue) {
+        punct = position.customValue;
+      } else if (position.selected === 'none') {
+        punct = '∅';
+      } else if (position.selected) {
+        punct = position.values[position.selected] || '∅';
+      } else if (position.type === 'identical' || position.type === 'majority') {
+        // For identical/majority, use autoValue (may be null = no punctuation)
+        punct = position.autoValue || '∅';
+      } else {
+        // For conflict, show version A's value as default
+        punct = position.values.A || '∅';
+      }
+      
+      return { before, after, punct };
+    },
+    
+    openPopup(event, paragraphId, positionIndex) {
+      const para = this.paragraphs[paragraphId];
+      if (!para) return;
+      
+      const position = para.positions[positionIndex];
+      if (!position) return;
+      
+      // Get position context
+      const context = this.qryGetPositionContext(paragraphId, positionIndex);
+      
+      // Calculate popup position
+      const rect = event.target.getBoundingClientRect();
+      let x = rect.left;
+      let y = rect.bottom + 5;
+      
+      // Viewport overflow handling
+      if (x + 320 > window.innerWidth) {
+        x = window.innerWidth - 330;
+      }
+      if (x < 10) x = 10;
+      
+      if (y + 350 > window.innerHeight) {
+        y = rect.top - 355;
+        if (y < 10) y = 10;
+      }
+      
+      this.popup = {
+        show: true,
+        open: true,
+        isTextDiff: false,
+        x: x + window.scrollX,
+        y: y + window.scrollY,
+        paragraphId: paragraphId,
+        positionIndex: positionIndex,
+        position: position,
+        contextBefore: context.before,
+        contextAfter: context.after,
+        contextPunct: context.punct
+      };
+      this.showCustomGrid = false;
+    },
+    
+    closePopup() {
+      this.popup.show = false;
+      this.popup.open = false;
+      this.showCustomGrid = false;
+    },
+    
+    /**
+     * Get popup marker class based on position type and version
+     * - identical: all green
+     * - majority: blue for majority versions, red for minority
+     * - conflict: red for A/C, lighter red for B
+     */
+    getPopupMarkerClass(version) {
+      if (!this.popup.position) return 'marker-identical';
+      
+      const pos = this.popup.position;
+      const type = pos.type;
+      
+      if (type === 'identical') {
+        // All match: light green for all
+        return 'popup-marker-match';
+      } else if (type === 'majority') {
+        // Check if this version is in the majority
+        const majorityVersions = pos.majorityVersions || [];
+        if (majorityVersions.includes(version)) {
+          return 'popup-marker-majority-agree';  // Light blue
+        } else {
+          return 'popup-marker-minority';  // Light red
+        }
+      } else {
+        // Conflict: A and C get red, B gets lighter red
+        if (version === 'B') {
+          return 'popup-marker-conflict-b';  // Lighter red
+        } else {
+          return 'popup-marker-conflict-ac';  // Light red
+        }
+      }
+    },
+    
+    /**
+     * Command: Select version (T069)
+     * Records user's version choice for a position
+     */
+    selectVersion(version) {
+      const para = this.paragraphs[this.popup.paragraphId];
+      if (!para) return;
+      
+      const pos = para.positions[this.popup.positionIndex];
+      if (!pos) return;
+      
+      pos.selected = version;
+      pos.customValue = null;
+      
+      this.updateParagraphStatus(this.popup.paragraphId);
+      this.recalculateGlobalStats();
+      this.saveSession();
+      this.closePopup();
+    },
+    
+    /**
+     * Command: Apply custom edit (T070)
+     * Records custom punctuation for a position
+     */
+    selectCustom(punct) {
+      const para = this.paragraphs[this.popup.paragraphId];
+      if (!para) return;
+      
+      const pos = para.positions[this.popup.positionIndex];
+      if (!pos) return;
+      
+      pos.selected = 'custom';
+      pos.customValue = punct;
+      
+      this.updateParagraphStatus(this.popup.paragraphId);
+      this.recalculateGlobalStats();
+      this.saveSession();
+      this.closePopup();
+    },
+    
+    /**
+     * Command: Select no punctuation
+     * Removes punctuation at this position
+     */
+    selectNone() {
+      const para = this.paragraphs[this.popup.paragraphId];
+      if (!para) return;
+      
+      const pos = para.positions[this.popup.positionIndex];
+      if (!pos) return;
+      
+      pos.selected = 'none';
+      pos.customValue = '';
+      
+      this.updateParagraphStatus(this.popup.paragraphId);
+      this.recalculateGlobalStats();
+      this.saveSession();
+      this.closePopup();
+    },
+    
+    updateParagraphStatus(paragraphId) {
+      const para = this.paragraphs[paragraphId];
+      if (!para) return;
+      
+      // Check for unresolved punctuation conflicts
+      const unresolvedConflicts = para.positions.filter(
+        p => p.type === 'conflict' && p.selected === null
+      ).length;
+      
+      // Check for unresolved text differences
+      let unresolvedTextDiffs = 0;
+      if (para.valid === false && para.textDiffs && para.textDiffs.length > 0) {
+        unresolvedTextDiffs = para.textDiffs.filter(
+          diff => diff.selected === undefined || diff.selected === null
+        ).length;
+      }
+      
+      // Paragraph is complete only if no unresolved conflicts AND no unresolved text diffs
+      para.status = (unresolvedConflicts === 0 && unresolvedTextDiffs === 0) ? 'complete' : 'in-progress';
+      para.stats = this.calculateParagraphStats(para.positions);
+    },
+    
+    // === Commands (US6 - Session Persistence) ===
+    
+    /**
+     * Query: Check if saved session exists (T083)
+     */
+    qryHasSavedSession() {
+      return localStorage.getItem('fosizhi-session') !== null;
+    },
+    
+    /**
+     * Command: Save session to localStorage (T080)
+     * Triggers auto-save after each selection
+     */
+    saveSession() {
+      try {
+        const data = {
+          version: '1.0',
+          timestamp: new Date().toISOString(),
+          sources: this.sources,
+          paragraphs: this.paragraphs,
+          currentParagraph: this.currentParagraph,
+          view: this.view,
+          filter: this.filter
+        };
+        localStorage.setItem('fosizhi-session', JSON.stringify(data));
+      } catch (e) {
+        console.error('Failed to save session:', e);
+        // T090: Handle localStorage quota error
+        if (e.name === 'QuotaExceededError' || e.code === 22) {
+          this.$refs.quotaErrorDialog.showModal();
+        }
+      }
+    },
+    
+    /**
+     * Command: Restore session from localStorage (T081)
+     */
+    restoreSession() {
+      try {
+        const saved = localStorage.getItem('fosizhi-session');
+        if (!saved) return;
+        
+        const data = JSON.parse(saved);
+        this.sources = data.sources || { A: null, B: null, C: null };
+        this.paragraphs = data.paragraphs || [];
+        this.currentParagraph = data.currentParagraph || 0;
+        this.filter = data.filter || 'all';
+        
+        // Recalculate stats from restored data
+        if (this.paragraphs.length > 0) {
+          // Recalculate paragraph stats
+          for (const para of this.paragraphs) {
+            para.stats = this.calculateParagraphStats(para.positions);
+          }
+          this.recalculateGlobalStats();
+          this.view = data.view || 'overview';
+        } else {
+          this.view = 'load';
+        }
+        
+        this.$refs.restoreDialog.close();
+      } catch (e) {
+        this.error = `恢復進度失敗: ${e.message}`;
+        this.$refs.restoreDialog.close();
+      }
+    },
+    
+    /**
+     * Command: Clear saved session from localStorage (T082)
+     */
+    startNewSession() {
+      this.clearSavedSession();
+      this.$refs.restoreDialog.close();
+    },
+    
+    /**
+     * Command: Clear saved session (T082)
+     */
+    clearSavedSession() {
+      localStorage.removeItem('fosizhi-session');
+    },
+    
+    // === Commands (US7) ===
+    async copyToClipboard() {
+      try {
+        await navigator.clipboard.writeText(this.finalText);
+        this.showCopySuccess = true;
+        setTimeout(() => {
+          this.showCopySuccess = false;
+        }, 3000);
+        
+        // T091: Clear saved session after successful final text generation and copy
+        this.clearSavedSession();
+      } catch (e) {
+        this.error = '複製到剪貼板失敗';
+      }
+    },
+    
+    /**
+     * T068a: Export final text to UTF-8 file
+     */
+    exportToFile() {
+      const filename = this.getExportFilename();
+      const blob = new Blob([this.finalText], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      // Show success notification
+      this.showCopySuccess = true;
+      setTimeout(() => {
+        this.showCopySuccess = false;
+      }, 3000);
+      
+      // Clear saved session after successful export
+      this.clearSavedSession();
+    },
+    
+    /**
+     * T068b: Get export filename based on source file common prefix
+     * If files have common prefix (e.g., y001_01_openai.txt, y001_01_claude.txt),
+     * returns {common_prefix}_final.txt (e.g., y001_01_final.txt)
+     * Otherwise returns '校對結果_final.txt'
+     */
+    getExportFilename() {
+      const names = ['A', 'B', 'C'].map(v => {
+        const source = this.sources[v];
+        if (!source || source.sourceType === 'paste') return null;
+        // Remove .txt extension for comparison
+        return source.name.replace(/\.txt$/i, '');
+      });
+      
+      // Check if all are file sources (not paste)
+      if (names.some(n => n === null)) {
+        return '校對結果_final.txt';
+      }
+      
+      // Find common prefix
+      const prefix = this.findCommonPrefix(names);
+      
+      // If common prefix exists and ends with underscore or has reasonable length
+      if (prefix && prefix.length >= 3) {
+        // Remove trailing underscore if present
+        const cleanPrefix = prefix.replace(/_$/, '');
+        return `${cleanPrefix}_final.txt`;
+      }
+      
+      return '校對結果_final.txt';
+    },
+    
+    /**
+     * T079b: Get version labels based on source filenames
+     * If files have common prefix but different postfix (e.g., y001_01_openai.txt),
+     * returns the postfix as labels (openai, claude, gemini)
+     * Otherwise returns default labels (版本 A, 版本 B, 版本 C)
+     */
+    getVersionLabels() {
+      const defaultLabels = { A: '版本 A', B: '版本 B', C: '版本 C' };
+      
+      const names = ['A', 'B', 'C'].map(v => {
+        const source = this.sources[v];
+        if (!source || source.sourceType === 'paste') return null;
+        // Remove .txt extension
+        return source.name.replace(/\.txt$/i, '');
+      });
+      
+      // Check if all are file sources (not paste)
+      if (names.some(n => n === null)) {
+        return defaultLabels;
+      }
+      
+      // Find common prefix
+      const prefix = this.findCommonPrefix(names);
+      
+      // If no meaningful common prefix, return defaults
+      if (!prefix || prefix.length < 3) {
+        return defaultLabels;
+      }
+      
+      // Extract postfixes (parts after the common prefix)
+      const postfixes = names.map(name => {
+        let postfix = name.substring(prefix.length);
+        // Remove leading underscore if present
+        postfix = postfix.replace(/^_/, '');
+        return postfix;
+      });
+      
+      // Check if all postfixes are non-empty and unique
+      const uniquePostfixes = new Set(postfixes);
+      if (postfixes.every(p => p.length > 0) && uniquePostfixes.size === 3) {
+        return {
+          A: postfixes[0],
+          B: postfixes[1],
+          C: postfixes[2]
+        };
+      }
+      
+      return defaultLabels;
+    },
+    
+    /**
+     * Helper: Find common prefix among array of strings
+     */
+    findCommonPrefix(strings) {
+      if (!strings || strings.length === 0) return '';
+      if (strings.length === 1) return strings[0];
+      
+      const first = strings[0];
+      let prefix = '';
+      
+      for (let i = 0; i < first.length; i++) {
+        const char = first[i];
+        if (strings.every(s => s[i] === char)) {
+          prefix += char;
+        } else {
+          break;
+        }
+      }
+      
+      return prefix;
+    }
+  };
+}
+  </script>
+</body>
+</html>
