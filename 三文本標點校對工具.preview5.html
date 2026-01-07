@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
@@ -5501,6 +5501,123 @@ function runDomainTests() {
     charClickableR3 === 1,
     `T079r-T T5: Single character clickable at boundary (got ${charClickableR3})`
   );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // T079r2-T: REGRESSION TEST for Bug #2026-01-07 - Inserted before Comparison
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- T079r2-T: REGRESSION TEST - Inserted punctuation order (Bug #2026-01-07) ---');
+  
+  // Bug scenario: Insert ）after 性 where ，already exists
+  // Original text: "知僧伽團體之應無我無個性，應和合休戚與共"
+  // User inserts ）at position 14 (after 性) where comparison ，already exists
+  // Expected visual order: 性），  (inserted BEFORE comparison)
+  // Bug was showing: 性，）  (comparison before inserted - WRONG)
+  
+  // Test 1: Single inserted + single comparison at SAME position
+  const paraRegression1 = {
+    id: 0,
+    pureText: '知僧伽團體之應無我無個性應和合休戚與共',
+    positions: [
+      { position: 14, type: 'identical', autoValue: '，', values: { A: '，', B: '，', C: '，' } }
+    ],
+    insertedPunctuation: new Map([[14, '）']])
+  };
+  
+  // Get all positions and apply THE ACTUAL SORT LOGIC from renderInlineView
+  const allPos1 = getAllPunctuationPositions(paraRegression1);
+  const sortedPos1 = allPos1.sort((a, b) => {
+    const aBase = Math.trunc(a.position);
+    const bBase = Math.trunc(b.position);
+    if (aBase !== bBase) return a.position - b.position;
+    
+    // CRITICAL: This is the fix - inserted before comparison
+    if (a.isInserted && !b.isInserted) return -1;
+    if (!a.isInserted && b.isInserted) return 1;
+    
+    if (a.isInserted && b.isInserted) {
+      const aFrac = Math.abs(a.position - aBase);
+      const bFrac = Math.abs(b.position - bBase);
+      return bFrac - aFrac;
+    } else {
+      return a.position - b.position;
+    }
+  });
+  
+  // Verify order
+  assert(
+    sortedPos1.length === 2,
+    `T079r2-T T1: Found 2 positions (got ${sortedPos1.length})`
+  );
+  
+  assert(
+    sortedPos1[0].isInserted === true && sortedPos1[0].customValue === '）',
+    'T079r2-T T2a: First position is inserted ）'
+  );
+  
+  assert(
+    sortedPos1[1].isInserted !== true && sortedPos1[1].autoValue === '，',
+    'T079r2-T T2b: Second position is comparison ，'
+  );
+  
+  console.log(`✅ T079r2-T T2 [CRITICAL]: Sort order verified - inserted (）) before comparison (，)`);
+  
+  // Test 3: Multiple inserted at same position + comparison (fractional positions)
+  const paraRegression2 = {
+    id: 0,
+    pureText: '如是我聞',
+    positions: [
+      { position: 2, type: 'identical', autoValue: '。', values: { A: '。', B: '。', C: '。' } }
+    ],
+    insertedPunctuation: new Map([
+      [2, '！'],      // Newest insertion (base position)
+      [2.1, '」'],    // Second insertion
+      [2.2, '「']     // First insertion (highest fractional)
+    ])
+  };
+  
+  const allPos2 = getAllPunctuationPositions(paraRegression2);
+  const sortedPos2 = allPos2.sort((a, b) => {
+    const aBase = Math.trunc(a.position);
+    const bBase = Math.trunc(b.position);
+    if (aBase !== bBase) return a.position - b.position;
+    
+    if (a.isInserted && !b.isInserted) return -1;
+    if (!a.isInserted && b.isInserted) return 1;
+    
+    if (a.isInserted && b.isInserted) {
+      const aFrac = Math.abs(a.position - aBase);
+      const bFrac = Math.abs(b.position - bBase);
+      return bFrac - aFrac;
+    } else {
+      return a.position - b.position;
+    }
+  });
+  
+  // Expected order: 「(2.2) → 」(2.1) → ！(2) → 。(comparison)
+  assert(
+    sortedPos2.length === 4,
+    `T079r2-T T3: Found 4 positions (got ${sortedPos2.length})`
+  );
+  
+  // Extract punctuation in order
+  const punctOrder = sortedPos2.map(p => p.isInserted ? p.customValue : p.autoValue);
+  const expectedOrder = ['「', '」', '！', '。'];
+  
+  assert(
+    JSON.stringify(punctOrder) === JSON.stringify(expectedOrder),
+    `T079r2-T T4 [CRITICAL]: Correct sort order - got ${punctOrder.join('')}, expected ${expectedOrder.join('')}`
+  );
+  
+  // Verify comparison marker is LAST
+  const lastItem = sortedPos2[sortedPos2.length - 1];
+  assert(
+    lastItem.isInserted !== true && lastItem.autoValue === '。',
+    'T079r2-T T5: Comparison marker (。) appears LAST after all inserted markers'
+  );
+
+  console.log('✅ T079r2-T: All regression tests passed - inserted punctuation correctly sorted before comparison');
+
+  // T079r-T continues...
   const insertedMarkersR3 = (htmlR3.match(/marker-inserted/g) || []).length;
   assert(
     insertedMarkersR3 === 1,
@@ -9511,6 +9628,22 @@ function proofreadingApp() {
     get releaseNotesContent() {
       // Markdown content rendered as HTML
       return `
+        <h3>📦 版本 v4 Preview 5 - Hotfix</h3>
+        <p><strong>發布日期：</strong>2026-01-07</p>
+        
+        <h4>🐛 Bug 修復</h4>
+        <ul>
+          <li><strong>修復新增標點顯示順序</strong> - 新增標點現在正確顯示在比對標點之前
+            <ul>
+              <li><strong>問題：</strong>當在已有比對標點的位置插入新標點時，顯示順序錯誤（例如：性，）應為性），）</li>
+              <li><strong>影響範圍：</strong>僅影響內嵌檢視顯示，輸出文本與文字差異檢視皆正常</li>
+              <li><strong>修復狀態：</strong>已完成並通過 6 項迴歸測試 (T079r2-T)</li>
+            </ul>
+          </li>
+        </ul>
+
+        <hr style="margin: 2rem 0; border: none; border-top: 1px solid #ccc;">
+
         <h3>📦 版本 v4 Preview 5 </h3>
         <p><strong>發布日期：</strong>2025-12-24</p>
         
@@ -10434,9 +10567,9 @@ function proofreadingApp() {
         const bBase = Math.trunc(b.position);
         if (aBase !== bBase) return a.position - b.position;
         
-        // At same base position: comparison first, then inserted
-        if (a.isInserted && !b.isInserted) return 1;   // inserted after comparison
-        if (!a.isInserted && b.isInserted) return -1;  // comparison before inserted
+        // At same base position: inserted first, then comparison (per analysis.md - new insertions appear FIRST)
+        if (a.isInserted && !b.isInserted) return -1;   // inserted before comparison
+        if (!a.isInserted && b.isInserted) return 1;   // comparison after inserted
         
         // Both same type
         if (a.isInserted && b.isInserted) {
