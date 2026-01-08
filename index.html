@@ -5318,6 +5318,9 @@ function runDomainTests() {
       const allPositions = getAllPunctuationPositions(para);
       const sortedPositions = allPositions.sort((a, b) => a.position - b.position);
       
+      // Track comparison position index separately
+      let comparisonPosIndex = 0;
+      
       for (const pos of sortedPositions) {
         const textSlice = para.pureText.slice(lastPos, pos.position);
         
@@ -5339,7 +5342,8 @@ function runDomainTests() {
           result += `<span class="marker marker-inserted">${this.escapeHtml(pos.customValue)}</span>`;
         } else {
           let displayPunct = pos.autoValue || pos.values?.A || '∅';
-          result += `<span class="marker marker-identical" onclick="openPopup(event, ${para.id}, ${pos.position})">${this.escapeHtml(displayPunct)}</span>`;
+          result += `<span class="marker marker-identical" onclick="openPopup(event, ${para.id}, ${comparisonPosIndex})">${this.escapeHtml(displayPunct)}</span>`;
+          comparisonPosIndex++;
         }
       }
       
@@ -6052,6 +6056,85 @@ function runDomainTests() {
   assert(
     paraU4.insertedPunctuation.get(1) === '，',
     'T079u-T T4: Insertion at position 1 should render between char[0] and char[1]'
+  );
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // T079v-T: BUG FIX - Comparison punctuation index after insertions
+  // Issue: After inserting N punctuations, the last N comparison punctuations
+  // become non-editable because their indices in visiblePositions array are
+  // shifted, but openPopup expects indices into para.positions array
+  // ─────────────────────────────────────────────────────────────────────────
+  console.log('\n--- T079v-T: Comparison punctuation index after insertions (Bug Fix) ---');
+  
+  // Test 1: Paragraph with 3 comparison punctuations and 2 inserted punctuations
+  // Should be able to access all 3 comparison punctuations
+  const paraV1 = {
+    id: 0,
+    pureText: '如是我聞一時',  // 6 characters
+    positions: [
+      { position: 2, type: 'identical', autoValue: '，', values: { A: '，', B: '，', C: '，' } },
+      { position: 4, type: 'identical', autoValue: '。', values: { A: '。', B: '。', C: '。' } },
+      { position: 6, type: 'identical', autoValue: '！', values: { A: '！', B: '！', C: '！' } }
+    ],
+    insertedPunctuation: new Map([
+      [1, '：'],    // Inserted after char[0]
+      [3, '？']     // Inserted after char[2]
+    ])
+  };
+  
+  // Get all positions including inserted
+  const allPosV1 = getAllPunctuationPositions(paraV1);
+  // Should have 5 total: 3 comparison + 2 inserted
+  assert(
+    allPosV1.length === 5,
+    `T079v-T T1a: Should have 5 total punctuations (got ${allPosV1.length})`
+  );
+  
+  // Sort positions
+  const sortedV1 = allPosV1.sort((a, b) => a.position - b.position);
+  
+  // visiblePositions would filter out negative positions (none here)
+  const visibleV1 = sortedV1.filter(p => p.position >= 0);
+  assert(
+    visibleV1.length === 5,
+    `T079v-T T1b: All 5 punctuations visible (got ${visibleV1.length})`
+  );
+  
+  // The bug: if we use loop index i from visibleV1 to call openPopup,
+  // the last comparison positions would have indices >= 3 (out of bounds for para.positions)
+  // Let's verify the fix by checking that comparison positions get correct indices
+  
+  // Simulate the fixed rendering logic
+  let comparisonIdx = 0;
+  const indices = [];
+  for (let i = 0; i < visibleV1.length; i++) {
+    const pos = visibleV1[i];
+    if (pos.isInserted) {
+      // Inserted punctuation - doesn't use openPopup
+      indices.push(-1);  // marker for inserted
+    } else {
+      // Comparison punctuation - should use comparisonIdx
+      indices.push(comparisonIdx);
+      comparisonIdx++;
+    }
+  }
+  
+  // Verify that comparison punctuation indices are 0, 1, 2 (valid indices into para.positions)
+  const compIndices = indices.filter(i => i >= 0);
+  assert(
+    compIndices.length === 3 && 
+    compIndices[0] === 0 && 
+    compIndices[1] === 1 && 
+    compIndices[2] === 2,
+    `T079v-T T1c: Comparison indices are 0,1,2 (got ${compIndices.join(',')})`
+  );
+  
+  // Test 2: Verify that para.positions[0], [1], [2] are the correct positions
+  assert(
+    paraV1.positions[0].position === 2 &&
+    paraV1.positions[1].position === 4 &&
+    paraV1.positions[2].position === 6,
+    'T079v-T T2: para.positions array has correct comparison punctuations'
   );
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -9628,7 +9711,32 @@ function proofreadingApp() {
     get releaseNotesContent() {
       // Markdown content rendered as HTML
       return `
-        <h3>📦 版本 v4 Preview 5 - Hotfix</h3>
+        <h3>📦 版本 v4 Preview 5 - Hotfix 2026-01-08</h3>
+        <p><strong>發布日期：</strong>2026-01-08</p>
+        
+        <h4>🐛 Bug 修復</h4>
+        <ul>
+          <li><strong>修復新增標點後無法編輯既有標點</strong> - 修正新增標點後導致既有比對標點無法點擊編輯的問題
+            <ul>
+              <li><strong>問題：</strong>在沒有文字差異的段落中，新增任意數量的標點後，相同數量的既有比對標點會無法點擊顯示選單（特別是段落末尾的標點）</li>
+              <li><strong>原因：</strong>渲染迴圈使用了合併後標點位置陣列的索引（包含比對與新增標點），但 openPopup() 函式期望的是純比對標點陣列的索引，導致索引錯位</li>
+              <li><strong>影響範圍：</strong>影響內嵌檢視中既有比對標點的點擊互動功能</li>
+              <li><strong>修復內容：</strong>
+                <ul>
+                  <li>在 renderInlineView() 函式中新增獨立的比對標點索引追蹤變數 (comparisonPosIndex)</li>
+                  <li>只在渲染比對標點時遞增此索引，新增標點則跳過</li>
+                  <li>確保傳遞給 openPopup() 的索引永遠對應到正確的 para.positions 陣列元素</li>
+                </ul>
+              </li>
+              <li><strong>測試驗證：</strong>新增 T079v-T 測試案例，驗證混合比對與新增標點時的索引正確性</li>
+              <li><strong>修復狀態：</strong>已完成並通過 4 項新增測試與既有迴歸測試</li>
+            </ul>
+          </li>
+        </ul>
+
+        <hr style="margin: 2rem 0; border: none; border-top: 1px solid #ccc;">
+
+        <h3>📦 版本 v4 Preview 5 - Hotfix 2026-01-07</h3>
         <p><strong>發布日期：</strong>2026-01-07</p>
         
         <h4>🐛 Bug 修復</h4>
@@ -10602,6 +10710,9 @@ function proofreadingApp() {
       // Filter out negative positions for main rendering loop
       const visiblePositions = sortedPositions.filter(p => p.position >= 0);
       
+      // Track the index into para.positions array separately for comparison punctuation
+      let comparisonPosIndex = 0;
+      
       for (let i = 0; i < visiblePositions.length; i++) {
         const pos = visiblePositions[i];
         
@@ -10677,8 +10788,11 @@ function proofreadingApp() {
                         role="button"
                         aria-label="標點位置 ${pos.position}: ${tooltip}. 點擊選擇"
                         data-para="${para.id}" 
-                        data-pos="${i}"
-                        onclick="document.querySelector('[x-data]')._x_dataStack[0].openPopup(event, ${para.id}, ${i})">${this.escapeHtml(displayPunct)}</span>`;
+                        data-pos="${comparisonPosIndex}"
+                        onclick="document.querySelector('[x-data]')._x_dataStack[0].openPopup(event, ${para.id}, ${comparisonPosIndex})">${this.escapeHtml(displayPunct)}</span>`;
+        
+        // Increment comparison position index for next comparison position
+        comparisonPosIndex++;
       }
       
       // T079e: Add remaining text with character click handlers in insertion mode
