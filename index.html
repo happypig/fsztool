@@ -1356,7 +1356,10 @@ function isPunctuation(char) {
 /**
  * List of common Chinese punctuation for custom selection grid
  */
-const PUNCTUATION_LIST = ['，', '。', '．', '、', '；', '：', '？', '！', '「', '」', '『', '』', '《', '》', '〈', '〉', '（', '）', '【', '】', '〔', '〕', '—', '…', '～'];
+const PUNCTUATION_LIST = ['，', '。', '；', '、', '：', '「', '」', '『', '』', '《', '》', '〈', '〉', '？', '！', '（', '）', '．', '—', '…', '～'];
+/**
+ * , '【', '】', '〔', '〕' non-standard, excluded from custom seclection grid
+ */
 
 /**
  * Ministry of Education Standard Punctuation Names (教育部標準名稱)
@@ -9711,8 +9714,23 @@ function proofreadingApp() {
     get releaseNotesContent() {
       // Markdown content rendered as HTML
       return `
-        <h3>📦 版本 v4 Preview 5 - Hotfix 2026-01-08</h3>
-        <p><strong>發布日期：</strong>2026-01-08</p>
+      <hr style="margin: 2rem 0; border: none; border-top: 1px solid #ccc;">
+  
+      <h3>📦 版本 v4 Preview 5 - Hotfix 2026-01-12</h3>
+        <p><strong>發布日期：</strong>2026-01-12</p>
+        
+        <h4>✨ 彈出選單內自定義的標點符號列表調整</h4>
+        <ul>
+          <li><strong>調整內容</strong> - 根據校對人員反饋，調整自定義標點符號的列表內容與順序
+            <ul>
+              <li><strong>列表內容：</strong>參考教育部標點符號表(2008年修訂版)選定，移除非標準標點符號如「【」「】」「〔」「〕」</li>
+              <li><strong>順序內容：</strong>根據校對人員使用習慣調整排列順序</li>
+            </ul>
+          </li>
+        </ul>
+
+        <h3>📦 版本 v4 Preview 5 - Hotfix 2026-01-07</h3>
+        <p><strong>發布日期：</strong>2026-01-07</p>
         
         <h4>🐛 Bug 修復</h4>
         <ul>
@@ -9739,7 +9757,7 @@ function proofreadingApp() {
         <h3>📦 版本 v4 Preview 5 - Hotfix 2026-01-07</h3>
         <p><strong>發布日期：</strong>2026-01-07</p>
         
-        <h4>🐛 Bug 修復</h4>
+        <h4>✨ V4 Preview 1~4 新增功能 (2025-12-04)</h4>
         <ul>
           <li><strong>修復新增標點顯示順序</strong> - 新增標點現在正確顯示在比對標點之前
             <ul>
