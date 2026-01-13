@@ -9729,6 +9729,8 @@ function proofreadingApp() {
           </li>
         </ul>
 
+        <hr style="margin: 2rem 0; border: none; border-top: 1px solid #ccc;">
+
         <h3>📦 版本 v4 Preview 5 - Hotfix 2026-01-07</h3>
         <p><strong>發布日期：</strong>2026-01-07</p>
         
@@ -9737,28 +9739,10 @@ function proofreadingApp() {
           <li><strong>修復新增標點後無法編輯既有標點</strong> - 修正新增標點後導致既有比對標點無法點擊編輯的問題
             <ul>
               <li><strong>問題：</strong>在沒有文字差異的段落中，新增任意數量的標點後，相同數量的既有比對標點會無法點擊顯示選單（特別是段落末尾的標點）</li>
-              <li><strong>原因：</strong>渲染迴圈使用了合併後標點位置陣列的索引（包含比對與新增標點），但 openPopup() 函式期望的是純比對標點陣列的索引，導致索引錯位</li>
               <li><strong>影響範圍：</strong>影響內嵌檢視中既有比對標點的點擊互動功能</li>
-              <li><strong>修復內容：</strong>
-                <ul>
-                  <li>在 renderInlineView() 函式中新增獨立的比對標點索引追蹤變數 (comparisonPosIndex)</li>
-                  <li>只在渲染比對標點時遞增此索引，新增標點則跳過</li>
-                  <li>確保傳遞給 openPopup() 的索引永遠對應到正確的 para.positions 陣列元素</li>
-                </ul>
-              </li>
-              <li><strong>測試驗證：</strong>新增 T079v-T 測試案例，驗證混合比對與新增標點時的索引正確性</li>
               <li><strong>修復狀態：</strong>已完成並通過 4 項新增測試與既有迴歸測試</li>
             </ul>
           </li>
-        </ul>
-
-        <hr style="margin: 2rem 0; border: none; border-top: 1px solid #ccc;">
-
-        <h3>📦 版本 v4 Preview 5 - Hotfix 2026-01-07</h3>
-        <p><strong>發布日期：</strong>2026-01-07</p>
-        
-        <h4>✨ V4 Preview 1~4 新增功能 (2025-12-04)</h4>
-        <ul>
           <li><strong>修復新增標點顯示順序</strong> - 新增標點現在正確顯示在比對標點之前
             <ul>
               <li><strong>問題：</strong>當在已有比對標點的位置插入新標點時，顯示順序錯誤（例如：性，）應為性），）</li>
