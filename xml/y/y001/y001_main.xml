@@ -1,0 +1,438 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0" xmlns:xi="http://www.w3.org/2001/XInclude">
+  <teiHeader>
+    <fileDesc>
+      <titleStmt>
+        <title type="main" xml:lang="zh">名山古剎-《中國佛寺史志》數位典藏</title>
+        <title type="main" xml:lang="en">Digital Archive of Chinese Buddhist Temple Gazetteers</title>
+        <title type="subordinate" xml:lang="zh">皇明寺觀志</title>
+        <title type="subordinate" xml:lang="en">huang ming si guan zhi</title>
+        <editor role="compiler">無名氏</editor>
+        <sponsor>Dharma Drum Institute of Liberal Arts, Library and Information Center, Digital Archives
+          Section 法鼓文理學院 圖書資訊館 數位典藏組</sponsor>
+        <sponsor>Chung-hwa Institute of Buddhist Studies 中華佛學研究所</sponsor>
+        <principal>Jenjou Hung 洪振洲</principal>
+        <respStmt>
+          <resp>Programming and Interface 程式及介面撰寫</resp>
+          <name>李志賢</name>
+        </respStmt>
+               <respStmt>
+                    <resp>Archive creation 檔案庫製作</resp>
+                    <name>周邦信</name>
+                </respStmt>
+         <respStmt>
+          <resp>Encoding 標記</resp>
+          <name>林綉麗</name>
+         </respStmt>
+        <respStmt>
+          <resp>AI punctuation 自動標點</resp>
+          <name>龍泉寺古籍庫系統</name>
+        </respStmt>
+      </titleStmt>
+     <publicationStmt>
+        <publisher>法鼓文理學院</publisher>
+        <address>
+                    <addrLine>20842新北市金山區法鼓路700號</addrLine>
+                    <addrLine>da@dila.edu.tw</addrLine>
+                </address>
+        <date>2014</date>
+        <availability>
+          <p>This document is published under a CC Attribution-Share Alike License</p>
+        </availability>
+      </publicationStmt>
+      <sourceDesc>
+                <biblStruct>
+                    <monogr>
+                      <title>皇明寺觀志</title>
+                      <editor>無名氏</editor> 
+                      <imprint><time>清同治二年<date>（1863）</date>丁丙藏原稿本</time></imprint>
+                        <imprint><pubPlace>中國江蘇．揚州</pubPlace>
+                            <publisher>廣陵書社發行</publisher>
+                            <date>2006</date></imprint>
+                    </monogr>          
+                    <series>
+                        <title>中國佛寺志叢刊</title>           
+                        <editor>白化文，張智</editor>
+                        <biblScope type="vol">第1册</biblScope>
+                        <biblScope type="pp">1-328</biblScope>
+                    </series>
+                </biblStruct>
+      </sourceDesc>
+    </fileDesc>
+<encodingDesc>
+  <charDecl>
+   <char xml:id="Z0950">
+      <charName>DDBC CHARACTER Z0950</charName>
+      <charProp>
+        <localName>composition</localName>
+        <value>[土*責]</value>
+      </charProp>
+    </char>
+   <char xml:id="Z0898">
+      <charName>DDBC CHARACTER Z0898</charName>
+      <charProp>
+        <localName>composition</localName>
+        <value>[圯/貝]</value>
+      </charProp>
+    </char>
+   <char xml:id="Z0900">
+      <charName>DDBC CHARACTER Z0900</charName>
+      <charProp>
+        <localName>composition</localName>
+        <value>[忄*即]</value>
+      </charProp>
+    </char>
+   <char xml:id="Z0901">
+      <charName>DDBC CHARACTER Z0901</charName>
+      <charProp>
+        <localName>composition</localName>
+        <value>[目*寸]</value>
+      </charProp>
+    </char>
+</charDecl>
+</encodingDesc>
+   </teiHeader>
+  <tei:facsimile xmlns:tei="http://www.tei-c.org/ns/1.0">
+        <tei:graphic url="4B001P029.jpg"/>
+        <tei:graphic url="4B001P030.jpg"/>
+        <tei:graphic url="4B001P031.jpg"/>
+        <tei:graphic url="4B001P032.jpg"/>
+        <tei:graphic url="4B001P033.jpg"/>
+        <tei:graphic url="4B001P034.jpg"/>
+        <tei:graphic url="4B001P035.jpg"/>
+        <tei:graphic url="4B001P036.jpg"/>
+        <tei:graphic url="4B001P037.jpg"/>
+        <tei:graphic url="4B001P038.jpg"/>
+        <tei:graphic url="4B001P039.jpg"/>
+        <tei:graphic url="4B001P040.jpg"/>
+        <tei:graphic url="4B001P041.jpg"/>
+        <tei:graphic url="4B001P042.jpg"/>
+        <tei:graphic url="4B001P043.jpg"/>
+        <tei:graphic url="4B001P044.jpg"/>
+        <tei:graphic url="4B001P045.jpg"/>
+        <tei:graphic url="4B001P046.jpg"/>
+        <tei:graphic url="4B001P047.jpg"/>
+        <tei:graphic url="4B001P048.jpg"/>
+        <tei:graphic url="4B001P049.jpg"/>
+        <tei:graphic url="4B001P050.jpg"/>
+        <tei:graphic url="4B001P051.jpg"/>
+        <tei:graphic url="4B001P052.jpg"/>
+        <tei:graphic url="4B001P053.jpg"/>
+        <tei:graphic url="4B001P054.jpg"/>
+        <tei:graphic url="4B001P055.jpg"/>
+        <tei:graphic url="4B001P056.jpg"/>
+        <tei:graphic url="4B001P057.jpg"/>
+        <tei:graphic url="4B001P058.jpg"/>
+        <tei:graphic url="4B001P059.jpg"/>
+        <tei:graphic url="4B001P060.jpg"/>
+        <tei:graphic url="4B001P061.jpg"/>
+        <tei:graphic url="4B001P062.jpg"/>
+        <tei:graphic url="4B001P063.jpg"/>
+        <tei:graphic url="4B001P064.jpg"/>
+        <tei:graphic url="4B001P065.jpg"/>
+        <tei:graphic url="4B001P066.jpg"/>
+        <tei:graphic url="4B001P067.jpg"/>
+        <tei:graphic url="4B001P068.jpg"/>
+        <tei:graphic url="4B001P069.jpg"/>
+        <tei:graphic url="4B001P070.jpg"/>
+        <tei:graphic url="4B001P071.jpg"/>
+        <tei:graphic url="4B001P072.jpg"/>
+        <tei:graphic url="4B001P073.jpg"/>
+        <tei:graphic url="4B001P074.jpg"/>
+        <tei:graphic url="4B001P075.jpg"/>
+        <tei:graphic url="4B001P076.jpg"/>
+        <tei:graphic url="4B001P077.jpg"/>
+        <tei:graphic url="4B001P078.jpg"/>
+        <tei:graphic url="4B001P079.jpg"/>
+        <tei:graphic url="4B001P080.jpg"/>
+        <tei:graphic url="4B001P081.jpg"/>
+        <tei:graphic url="4B001P082.jpg"/>
+        <tei:graphic url="4B001P083.jpg"/>
+        <tei:graphic url="4B001P084.jpg"/>
+        <tei:graphic url="4B001P085.jpg"/>
+        <tei:graphic url="4B001P086.jpg"/>
+        <tei:graphic url="4B001P087.jpg"/>
+        <tei:graphic url="4B001P088.jpg"/>
+        <tei:graphic url="4B001P089.jpg"/>
+        <tei:graphic url="4B001P090.jpg"/>
+        <tei:graphic url="4B001P091.jpg"/>
+        <tei:graphic url="4B001P092.jpg"/>
+        <tei:graphic url="4B001P093.jpg"/>
+        <tei:graphic url="4B001P094.jpg"/>
+        <tei:graphic url="4B001P095.jpg"/>
+        <tei:graphic url="4B001P096.jpg"/>
+        <tei:graphic url="4B001P097.jpg"/>
+        <tei:graphic url="4B001P098.jpg"/>
+        <tei:graphic url="4B001P099.jpg"/>
+        <tei:graphic url="4B001P100.jpg"/>
+        <tei:graphic url="4B001P101.jpg"/>
+        <tei:graphic url="4B001P102.jpg"/>
+        <tei:graphic url="4B001P103.jpg"/>
+        <tei:graphic url="4B001P104.jpg"/>
+        <tei:graphic url="4B001P105.jpg"/>
+        <tei:graphic url="4B001P106.jpg"/>
+        <tei:graphic url="4B001P107.jpg"/>
+        <tei:graphic url="4B001P108.jpg"/>
+        <tei:graphic url="4B001P109.jpg"/>
+        <tei:graphic url="4B001P110.jpg"/>
+        <tei:graphic url="4B001P111.jpg"/>
+        <tei:graphic url="4B001P112.jpg"/>
+        <tei:graphic url="4B001P113.jpg"/>
+        <tei:graphic url="4B001P114.jpg"/>
+        <tei:graphic url="4B001P115.jpg"/>
+        <tei:graphic url="4B001P116.jpg"/>
+        <tei:graphic url="4B001P117.jpg"/>
+        <tei:graphic url="4B001P118.jpg"/>
+        <tei:graphic url="4B001P119.jpg"/>
+        <tei:graphic url="4B001P120.jpg"/>
+        <tei:graphic url="4B001P121.jpg"/>
+        <tei:graphic url="4B001P122.jpg"/>
+        <tei:graphic url="4B001P123.jpg"/>
+        <tei:graphic url="4B001P124.jpg"/>
+        <tei:graphic url="4B001P125.jpg"/>
+        <tei:graphic url="4B001P126.jpg"/>
+        <tei:graphic url="4B001P127.jpg"/>
+        <tei:graphic url="4B001P128.jpg"/>
+        <tei:graphic url="4B001P129.jpg"/>
+        <tei:graphic url="4B001P130.jpg"/>
+        <tei:graphic url="4B001P131.jpg"/>
+        <tei:graphic url="4B001P132.jpg"/>
+        <tei:graphic url="4B001P133.jpg"/>
+        <tei:graphic url="4B001P134.jpg"/>
+        <tei:graphic url="4B001P135.jpg"/>
+        <tei:graphic url="4B001P136.jpg"/>
+        <tei:graphic url="4B001P137.jpg"/>
+        <tei:graphic url="4B001P138.jpg"/>
+        <tei:graphic url="4B001P139.jpg"/>
+        <tei:graphic url="4B001P140.jpg"/>
+        <tei:graphic url="4B001P141.jpg"/>
+        <tei:graphic url="4B001P142.jpg"/>
+        <tei:graphic url="4B001P143.jpg"/>
+        <tei:graphic url="4B001P144.jpg"/>
+        <tei:graphic url="4B001P145.jpg"/>
+        <tei:graphic url="4B001P146.jpg"/>
+        <tei:graphic url="4B001P147.jpg"/>
+        <tei:graphic url="4B001P148.jpg"/>
+        <tei:graphic url="4B001P149.jpg"/>
+        <tei:graphic url="4B001P150.jpg"/>
+        <tei:graphic url="4B001P151.jpg"/>
+        <tei:graphic url="4B001P152.jpg"/>
+        <tei:graphic url="4B001P153.jpg"/>
+        <tei:graphic url="4B001P154.jpg"/>
+        <tei:graphic url="4B001P155.jpg"/>
+        <tei:graphic url="4B001P156.jpg"/>
+        <tei:graphic url="4B001P157.jpg"/>
+        <tei:graphic url="4B001P158.jpg"/>
+        <tei:graphic url="4B001P159.jpg"/>
+        <tei:graphic url="4B001P160.jpg"/>
+        <tei:graphic url="4B001P161.jpg"/>
+        <tei:graphic url="4B001P162.jpg"/>
+        <tei:graphic url="4B001P163.jpg"/>
+        <tei:graphic url="4B001P164.jpg"/>
+        <tei:graphic url="4B001P165.jpg"/>
+        <tei:graphic url="4B001P166.jpg"/>
+        <tei:graphic url="4B001P167.jpg"/>
+        <tei:graphic url="4B001P168.jpg"/>
+        <tei:graphic url="4B001P169.jpg"/>
+        <tei:graphic url="4B001P170.jpg"/>
+        <tei:graphic url="4B001P171.jpg"/>
+        <tei:graphic url="4B001P172.jpg"/>
+        <tei:graphic url="4B001P173.jpg"/>
+        <tei:graphic url="4B001P174.jpg"/>
+        <tei:graphic url="4B001P175.jpg"/>
+        <tei:graphic url="4B001P176.jpg"/>
+        <tei:graphic url="4B001P177.jpg"/>
+        <tei:graphic url="4B001P178.jpg"/>
+        <tei:graphic url="4B001P179.jpg"/>
+        <tei:graphic url="4B001P180.jpg"/>
+        <tei:graphic url="4B001P181.jpg"/>
+        <tei:graphic url="4B001P182.jpg"/>
+        <tei:graphic url="4B001P183.jpg"/>
+        <tei:graphic url="4B001P184.jpg"/>
+        <tei:graphic url="4B001P185.jpg"/>
+        <tei:graphic url="4B001P186.jpg"/>
+        <tei:graphic url="4B001P187.jpg"/>
+        <tei:graphic url="4B001P188.jpg"/>
+        <tei:graphic url="4B001P189.jpg"/>
+        <tei:graphic url="4B001P190.jpg"/>
+        <tei:graphic url="4B001P191.jpg"/>
+        <tei:graphic url="4B001P192.jpg"/>
+        <tei:graphic url="4B001P193.jpg"/>
+        <tei:graphic url="4B001P194.jpg"/>
+        <tei:graphic url="4B001P195.jpg"/>
+        <tei:graphic url="4B001P196.jpg"/>
+        <tei:graphic url="4B001P197.jpg"/>
+        <tei:graphic url="4B001P198.jpg"/>
+        <tei:graphic url="4B001P199.jpg"/>
+        <tei:graphic url="4B001P200.jpg"/>
+        <tei:graphic url="4B001P201.jpg"/>
+        <tei:graphic url="4B001P202.jpg"/>
+        <tei:graphic url="4B001P203.jpg"/>
+        <tei:graphic url="4B001P204.jpg"/>
+        <tei:graphic url="4B001P205.jpg"/>
+        <tei:graphic url="4B001P206.jpg"/>
+        <tei:graphic url="4B001P207.jpg"/>
+        <tei:graphic url="4B001P208.jpg"/>
+        <tei:graphic url="4B001P209.jpg"/>
+        <tei:graphic url="4B001P210.jpg"/>
+        <tei:graphic url="4B001P211.jpg"/>
+        <tei:graphic url="4B001P212.jpg"/>
+        <tei:graphic url="4B001P213.jpg"/>
+        <tei:graphic url="4B001P214.jpg"/>
+        <tei:graphic url="4B001P215.jpg"/>
+        <tei:graphic url="4B001P216.jpg"/>
+        <tei:graphic url="4B001P217.jpg"/>
+        <tei:graphic url="4B001P218.jpg"/>
+        <tei:graphic url="4B001P219.jpg"/>
+        <tei:graphic url="4B001P220.jpg"/>
+        <tei:graphic url="4B001P221.jpg"/>
+        <tei:graphic url="4B001P222.jpg"/>
+        <tei:graphic url="4B001P223.jpg"/>
+        <tei:graphic url="4B001P224.jpg"/>
+        <tei:graphic url="4B001P225.jpg"/>
+        <tei:graphic url="4B001P226.jpg"/>
+        <tei:graphic url="4B001P227.jpg"/>
+        <tei:graphic url="4B001P228.jpg"/>
+        <tei:graphic url="4B001P229.jpg"/>
+        <tei:graphic url="4B001P230.jpg"/>
+        <tei:graphic url="4B001P231.jpg"/>
+        <tei:graphic url="4B001P232.jpg"/>
+        <tei:graphic url="4B001P233.jpg"/>
+        <tei:graphic url="4B001P234.jpg"/>
+        <tei:graphic url="4B001P235.jpg"/>
+        <tei:graphic url="4B001P236.jpg"/>
+        <tei:graphic url="4B001P237.jpg"/>
+        <tei:graphic url="4B001P238.jpg"/>
+        <tei:graphic url="4B001P239.jpg"/>
+        <tei:graphic url="4B001P240.jpg"/>
+        <tei:graphic url="4B001P241.jpg"/>
+        <tei:graphic url="4B001P242.jpg"/>
+        <tei:graphic url="4B001P243.jpg"/>
+        <tei:graphic url="4B001P244.jpg"/>
+        <tei:graphic url="4B001P245.jpg"/>
+        <tei:graphic url="4B001P246.jpg"/>
+        <tei:graphic url="4B001P247.jpg"/>
+        <tei:graphic url="4B001P248.jpg"/>
+        <tei:graphic url="4B001P249.jpg"/>
+        <tei:graphic url="4B001P250.jpg"/>
+        <tei:graphic url="4B001P251.jpg"/>
+        <tei:graphic url="4B001P252.jpg"/>
+        <tei:graphic url="4B001P253.jpg"/>
+        <tei:graphic url="4B001P254.jpg"/>
+        <tei:graphic url="4B001P255.jpg"/>
+        <tei:graphic url="4B001P256.jpg"/>
+        <tei:graphic url="4B001P257.jpg"/>
+        <tei:graphic url="4B001P258.jpg"/>
+        <tei:graphic url="4B001P259.jpg"/>
+        <tei:graphic url="4B001P260.jpg"/>
+        <tei:graphic url="4B001P261.jpg"/>
+        <tei:graphic url="4B001P262.jpg"/>
+        <tei:graphic url="4B001P263.jpg"/>
+        <tei:graphic url="4B001P264.jpg"/>
+        <tei:graphic url="4B001P265.jpg"/>
+        <tei:graphic url="4B001P266.jpg"/>
+        <tei:graphic url="4B001P267.jpg"/>
+        <tei:graphic url="4B001P268.jpg"/>
+        <tei:graphic url="4B001P269.jpg"/>
+        <tei:graphic url="4B001P270.jpg"/>
+        <tei:graphic url="4B001P271.jpg"/>
+        <tei:graphic url="4B001P272.jpg"/>
+        <tei:graphic url="4B001P273.jpg"/>
+        <tei:graphic url="4B001P274.jpg"/>
+        <tei:graphic url="4B001P275.jpg"/>
+        <tei:graphic url="4B001P276.jpg"/>
+        <tei:graphic url="4B001P277.jpg"/>
+        <tei:graphic url="4B001P278.jpg"/>
+        <tei:graphic url="4B001P279.jpg"/>
+        <tei:graphic url="4B001P280.jpg"/>
+        <tei:graphic url="4B001P281.jpg"/>
+        <tei:graphic url="4B001P282.jpg"/>
+        <tei:graphic url="4B001P283.jpg"/>
+        <tei:graphic url="4B001P284.jpg"/>
+        <tei:graphic url="4B001P285.jpg"/>
+        <tei:graphic url="4B001P286.jpg"/>
+        <tei:graphic url="4B001P287.jpg"/>
+        <tei:graphic url="4B001P288.jpg"/>
+        <tei:graphic url="4B001P289.jpg"/>
+        <tei:graphic url="4B001P290.jpg"/>
+        <tei:graphic url="4B001P291.jpg"/>
+        <tei:graphic url="4B001P292.jpg"/>
+        <tei:graphic url="4B001P293.jpg"/>
+        <tei:graphic url="4B001P294.jpg"/>
+        <tei:graphic url="4B001P295.jpg"/>
+        <tei:graphic url="4B001P296.jpg"/>
+        <tei:graphic url="4B001P297.jpg"/>
+        <tei:graphic url="4B001P298.jpg"/>
+        <tei:graphic url="4B001P299.jpg"/>
+        <tei:graphic url="4B001P300.jpg"/>
+        <tei:graphic url="4B001P301.jpg"/>
+        <tei:graphic url="4B001P302.jpg"/>
+        <tei:graphic url="4B001P303.jpg"/>
+        <tei:graphic url="4B001P304.jpg"/>
+        <tei:graphic url="4B001P305.jpg"/>
+        <tei:graphic url="4B001P306.jpg"/>
+        <tei:graphic url="4B001P307.jpg"/>
+        <tei:graphic url="4B001P308.jpg"/>
+        <tei:graphic url="4B001P309.jpg"/>
+        <tei:graphic url="4B001P310.jpg"/>
+        <tei:graphic url="4B001P311.jpg"/>
+        <tei:graphic url="4B001P312.jpg"/>
+        <tei:graphic url="4B001P313.jpg"/>
+        <tei:graphic url="4B001P314.jpg"/>
+        <tei:graphic url="4B001P315.jpg"/>
+        <tei:graphic url="4B001P316.jpg"/>
+        <tei:graphic url="4B001P317.jpg"/>
+        <tei:graphic url="4B001P318.jpg"/>
+        <tei:graphic url="4B001P319.jpg"/>
+        <tei:graphic url="4B001P320.jpg"/>
+        <tei:graphic url="4B001P321.jpg"/>
+        <tei:graphic url="4B001P322.jpg"/>
+        <tei:graphic url="4B001P323.jpg"/>
+        <tei:graphic url="4B001P324.jpg"/>
+        <tei:graphic url="4B001P325.jpg"/>
+        <tei:graphic url="4B001P326.jpg"/>
+        <tei:graphic url="4B001P327.jpg"/>
+        <tei:graphic url="4B001P328.jpg"/>
+        <tei:graphic url="4B001P329.jpg"/>
+        <tei:graphic url="4B001P330.jpg"/>
+        <tei:graphic url="4B001P331.jpg"/>
+        <tei:graphic url="4B001P332.jpg"/>
+        <tei:graphic url="4B001P333.jpg"/>
+        <tei:graphic url="4B001P334.jpg"/>
+        <tei:graphic url="4B001P335.jpg"/>
+        <tei:graphic url="4B001P336.jpg"/>
+        <tei:graphic url="4B001P337.jpg"/>
+        <tei:graphic url="4B001P338.jpg"/>
+        <tei:graphic url="4B001P339.jpg"/>
+        <tei:graphic url="4B001P340.jpg"/>
+        <tei:graphic url="4B001P341.jpg"/>
+        <tei:graphic url="4B001P342.jpg"/>
+        <tei:graphic url="4B001P343.jpg"/>
+        <tei:graphic url="4B001P344.jpg"/>
+        <tei:graphic url="4B001P345.jpg"/>
+        <tei:graphic url="4B001P346.jpg"/>
+        <tei:graphic url="4B001P347.jpg"/>
+        <tei:graphic url="4B001P348.jpg"/>
+        <tei:graphic url="4B001P349.jpg"/>
+        <tei:graphic url="4B001P350.jpg"/>
+        <tei:graphic url="4B001P351.jpg"/>
+        <tei:graphic url="4B001P352.jpg"/>
+        <tei:graphic url="4B001P353.jpg"/>
+        <tei:graphic url="4B001P354.jpg"/>
+        <tei:graphic url="4B001P355.jpg"/>
+        <tei:graphic url="4B001P356.jpg"/>
+        <tei:graphic url="4B001P357.jpg"/>
+        <tei:graphic url="4B001P358.jpg"/>
+        <tei:graphic url="4B001P359.jpg"/>
+        <tei:graphic url="4B001P360.jpg"/>
+</tei:facsimile> 
+  <text>
+    <body>
+      <div type="wrapper">
+        <xi:include href="y001_front.xml"/>
+        <xi:include href="y001_00.xml"/>
+        <xi:include href="y001_01.xml"/>
+      </div>
+    </body>
+  </text>
+</TEI>

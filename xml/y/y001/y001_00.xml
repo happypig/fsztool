@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<div xmlns="http://www.tei-c.org/ns/1.0" xml:id="y001_00.xml">
+    <pb
+        facs="4B001P033.jpg" n="0001" />
+    <head resp="ddbc.da">皇明寺觀志卷首</head>
+    <lb
+        n="1" />
+    <div>
+        <head type="xu">皇明寺觀志一卷<seg rend="font-size:small">明抄本 季滄葦藏書</seg></head>
+        <lb
+            n="2" />
+        <p>是志從明《一統志．寺觀》一門錄出者，有御史之章：季印振宜、滄葦、汪魚亭藏閱<lb
+                n="3" />書、舊雨樓書畫印、趙印輯甯、古歡书屋，諸圖記。</p>
+    </div>
+    <pb
+        facs="4B001P034.jpg" n="0002" />
+    <lb
+        n="1" />
+    <div>
+        <head resp="ddbc.da" type="xu">序</head>
+        <p>同治二年六月十九日，自上海至婁縣寓谷陽門外，<lb
+                n="2" />凡兩月，时时過超果寺谷水院，以遣覊愁。浙西杭、<lb
+                n="3" />嘉、湖三郡猶为虎窟，偶淂此志，故鄉诸寺觀<lb
+                n="4" />尽在尸山血海，不觉牢然悆在矣。</p>
+        <lb
+            n="5" />
+        <p rend="margin-top:2ex;text-indent:0">復檢明一統志，知此書即全錄寺觀一門，殆溺<lb
+                n="6" />於釋老者，摘錄以便繙閱之本耳。厯入<lb
+                n="7" />季滄葦、汪魚亭、趙古歡諸藏書家，亦足<lb
+                n="8" />珍重矣。</p>
+        <closer>當歸艸堂主人記<stamp><gap extent="2" unit="cjk_char" reason="illegible" />氏正修堂藏書</stamp><stamp>
+            當歸艸堂</stamp><stamp>江蘇弟一圖書館善本書之印記</stamp></closer>
+    </div>
+</div>
