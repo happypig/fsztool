@@ -516,6 +516,23 @@
     return `http://buddhistinformatics.dila.edu.tw/fosizhi/ui.html?book=${encodeURIComponent(book)}&cpage=${encodeURIComponent(cpage)}`;
   }
 
+  // ── Indent a raw XML fragment for display ──────────────────────
+  function indentXml(str) {
+    let depth = 0;
+    return str.split('\n').map(line => {
+      line = line.trimEnd();
+      if (!line) return '';
+      if (/^<\//.test(line)) depth = Math.max(0, depth - 1);
+      const out = '  '.repeat(depth) + line;
+      const opens  = (line.match(/<[^\/!?][^>]*>/g) || []).length;
+      const closes = (line.match(/<\/[^>]+>/g) || []).length;
+      const selfs  = (line.match(/<[^>]+\/>/g) || []).length;
+      const net = (opens - selfs) - closes;
+      if (net > 0 && !/^<\//.test(line)) depth += net;
+      return out;
+    }).filter(l => l !== '').join('\n');
+  }
+
   // ── Locate a DOM node's character range in the raw XML string ──
   // Returns {start, end} indices in rawXml, or null if not found.
   function locateNodeInRaw(rawXml, node) {
@@ -544,6 +561,7 @@
     // Strategy 2: other attribute values — search each individually (avoids
     // attribute-ordering mismatch from XMLSerializer)
     if (node.attributes) {
+      const nodeText = (node.textContent || '').trim().slice(0, 30);
       // Sort by value length descending — longer values are more unique
       const attrs = Array.from(node.attributes)
         .filter(a => a.name !== 'xml:id' && a.value.length >= 4)
@@ -552,7 +570,11 @@
         const pos = rawXml.indexOf(`${a.name}="${a.value}"`);
         if (pos !== -1) {
           const r = boundary(pos);
-          if (r) return r;
+          if (r) {
+            // Validate: if node has text content, it must appear in this slice
+            // (prevents matching the first <head type="temple"> when looking for a later one)
+            if (!nodeText || rawXml.slice(r.start, r.end).includes(nodeText)) return r;
+          }
         }
       }
     }
@@ -850,20 +872,56 @@
         const from = Math.max(0, r.rawStart - ctx);
         const to   = Math.min(this.rawXml.length, r.rawEnd + ctx);
 
-        const esc = s => s
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;');
+        // Embed sentinel markers around the matched node, then format the whole
+        // context as indented XML, then split on the sentinels to apply <mark>.
+        const OPEN = '\x01', CLOSE = '\x02';
+        const raw =
+          this.rawXml.slice(from, r.rawStart) + OPEN +
+          this.rawXml.slice(r.rawStart, r.rawEnd) + CLOSE +
+          this.rawXml.slice(r.rawEnd, to);
 
-        const ellBefore = from > 0                 ? '<span style="opacity:.45">…</span>' : '';
-        const ellAfter  = to < this.rawXml.length  ? '<span style="opacity:.45">…</span>' : '';
+        // Insert line-breaks at tag boundaries; also ensure the sentinel-wrapped
+        // node gets its own line so the mark is cleanly isolated.
+        const broken = raw
+          .replace(/></g, '>\n<')
+          .replace(new RegExp('>' + OPEN, 'g'),  '>\n' + OPEN)
+          .replace(new RegExp(CLOSE + '<', 'g'), CLOSE + '\n<');
+
+        const indented = indentXml(broken);
+
+        // Split on sentinels, HTML-escape each part, then compose with <mark>
+        const [b, rest]  = indented.split(OPEN);
+        const [m, a]     = (rest || '').split(CLOSE);
+
+        const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const ellBefore = from > 0                ? '<span style="opacity:.45">…</span>' : '';
+        const ellAfter  = to < this.rawXml.length ? '<span style="opacity:.45">…</span>' : '';
 
         this.xmlFocusHtml =
           ellBefore +
-          esc(this.rawXml.slice(from, r.rawStart)) +
-          '<mark>' + esc(this.rawXml.slice(r.rawStart, r.rawEnd)) + '</mark>' +
-          esc(this.rawXml.slice(r.rawEnd, to)) +
+          esc(b || '') +
+          '<mark>' + esc(m || '') + '</mark>' +
+          esc(a || '') +
           ellAfter;
+
+        // Scroll the mark to the vertical centre of the <pre> viewport.
+        // Double-rAF ensures Chrome has completed layout after Alpine's DOM update.
+        this.$nextTick(() => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              const allPres = document.querySelectorAll('pre.xml-preview');
+              for (const pre of allPres) {
+                if (pre.offsetParent === null) continue; // skip display:none panels
+                const mark = pre.querySelector('mark');
+                if (!mark) continue;
+                const markRect = mark.getBoundingClientRect();
+                const preRect  = pre.getBoundingClientRect();
+                pre.scrollTop += (markRect.top - preRect.top) - (pre.clientHeight / 2) + (markRect.height / 2);
+                break;
+              }
+            });
+          });
+        });
       },
 
       async run() {
