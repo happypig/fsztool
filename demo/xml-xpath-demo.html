@@ -49,22 +49,46 @@
     }
 
     .result-item .xml-id {
-      font-size: 0.75rem;
-      color: var(--pico-muted-color);
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--pico-primary);
       font-family: monospace;
     }
 
     .result-locate {
       float: right;
       font-size: 0.7rem;
+      font-weight: 600;
       color: var(--pico-primary);
+      user-select: none;
     }
 
     .fsz-link {
       display: inline-block;
-      font-size: 0.75rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.18rem 0.65rem;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--pico-primary) !important;
+      border: 1.5px solid var(--pico-primary);
+      text-decoration: none;
       word-break: break-all;
-      color: var(--pico-primary);
+      transition: background 0.15s, color 0.15s;
+    }
+    .fsz-link:hover {
+      background: var(--pico-primary);
+      color: #fff !important;
+    }
+    .result-item.selected .fsz-link {
+      background: rgba(255,255,255,0.95);
+      color: var(--pico-primary) !important;
+      border-color: transparent;
+    }
+    .result-item.selected .attr-badge {
+      color: rgba(255,255,255,0.9);
+      border-color: rgba(255,255,255,0.6);
+      opacity: 1;
     }
 
     .result-item .content {
@@ -73,7 +97,13 @@
       word-break: break-all;
     }
 
-    .raw-xml-section { margin-top: 1.5rem; }
+    .raw-xml-inline {
+      border-left: 3px solid var(--pico-primary);
+      margin: 0 0 0.5rem 0;
+      padding: 0.5rem 0.75rem;
+      background: var(--pico-code-background-color);
+      border-radius: 0 4px 4px 0;
+    }
 
     details summary { cursor: pointer; }
 
@@ -113,7 +143,28 @@
 
     .result-item.selected {
       border-color: var(--pico-primary);
-      background: var(--pico-primary-background);
+      background: var(--pico-primary);
+      color: #fff;
+    }
+    .result-item.selected .xml-id {
+      color: rgba(255,255,255,0.75);
+    }
+    .result-item.selected .content {
+      color: #fff;
+    }
+    .result-item.selected .result-locate {
+      color: rgba(255,255,255,0.9);
+      background: rgba(255,255,255,0.18);
+      border-radius: 4px;
+      padding: 0.05rem 0.35rem;
+    }
+    /* dark-mode: keep mark readable */
+    @media (prefers-color-scheme: dark) {
+      pre.xml-preview mark {
+        background: #b8860b;
+        color: #fff;
+        outline-color: #ffd700;
+      }
     }
 
     .error-msg {
@@ -127,11 +178,13 @@
       display: inline-block;
       font-size: 0.7rem;
       font-family: monospace;
-      background: var(--pico-primary-background);
+      background: transparent;
       color: var(--pico-primary);
+      border: 1px solid var(--pico-primary);
       border-radius: 3px;
       padding: 0 0.3rem;
       margin-right: 0.3rem;
+      opacity: 0.8;
     }
 
     .status-bar {
@@ -345,59 +398,50 @@
       </div>
 
       <template x-for="(r, i) in results.slice(0, maxDisplay)" :key="i">
-        <div class="result-item"
-             :class="{ selected: selectedResultIdx === i }"
-             @click="focusResult(i)"
-             :title="r.rawStart != null ? 'Click to highlight in raw XML below' : 'Position in raw XML not found'">
-          <div>
-            <span x-show="r.rawStart != null" class="result-locate">📍 view in XML ↓</span>
-            <template x-for="(v, k) in r.attrs" :key="k">
-              <span class="attr-badge" x-text="`${k}=&quot;${v}&quot;`"></span>
+        <div>
+          <div class="result-item"
+               :class="{ selected: selectedResultIdx === i }"
+               @click="focusResult(i)"
+               :title="r.rawStart != null ? 'Click to show/hide raw XML inline' : 'Position in raw XML not found'">
+            <div>
+              <span x-show="r.rawStart != null" class="result-locate"
+                    x-text="selectedResultIdx === i ? '📍 XML ▲' : '📍 XML ▼'"></span>
+              <template x-for="(v, k) in r.attrs" :key="k">
+                <span class="attr-badge" x-text="`${k}=&quot;${v}&quot;`"></span>
+              </template>
+              <span class="xml-id" x-text="`<${r.nodeName}>`"></span>
+            </div>
+            <div class="content" x-text="r.text"></div>
+            <!-- FSZ link -->
+            <div x-show="r.pbN" style="margin-top:0.4rem" @click.stop>
+              <a :href="fszUrlFor(r)" target="_blank" rel="noopener"
+                 class="fsz-link"
+                 x-text="`🔗 Open in FSZ — ${fszUrlFor(r)}`"></a>
+            </div>
+            <div x-show="!r.pbN" style="font-size:0.72rem; color:var(--pico-muted-color); margin-top:0.3rem">
+              No preceding &lt;pb&gt; found — FSZ link unavailable
+            </div>
+          </div>
+          <!-- Inline raw XML preview — expands below the selected card -->
+          <div x-show="selectedResultIdx === i" class="raw-xml-inline">
+            <template x-if="xmlFocusHtml !== ''">
+              <div>
+                <p class="xml-focus-label"
+                   x-text="`Chars ${r.rawStart ?? '?'}–${r.rawEnd ?? '?'} of ${rawXml.length} total`"></p>
+                <pre class="xml-preview" x-html="xmlFocusHtml"></pre>
+              </div>
             </template>
-            <span class="xml-id" x-text="`<${r.nodeName}>`"></span>
-          </div>
-          <div class="content" x-text="r.text"></div>
-          <!-- FSZ link -->
-          <div x-show="r.pbN" style="margin-top:0.4rem" @click.stop>
-            <a :href="fszUrlFor(r)" target="_blank" rel="noopener"
-               class="fsz-link"
-               x-text="`🔗 Open in FSZ — ${fszUrlFor(r)}`"></a>
-          </div>
-          <div x-show="!r.pbN" style="font-size:0.72rem; color:var(--pico-muted-color); margin-top:0.3rem">
-            No preceding &lt;pb&gt; found — FSZ link unavailable
+            <template x-if="xmlFocusHtml === ''">
+              <p class="xml-focus-label" style="padding:0.25rem 0; margin:0">
+                Position not found in raw XML for this node.
+              </p>
+            </template>
           </div>
         </div>
       </template>
     </section>
 
-    <!-- ── Raw XML preview ───────────────────────────────────────── -->
-    <section class="raw-xml-section" x-show="rawXml" id="xml-panel">
-      <details :open="xmlFocusHtml !== ''">
-        <summary>
-          Raw XML
-          <span x-show="selectedResultIdx >= 0"
-                x-text="`— result #${selectedResultIdx + 1} highlighted (±500 chars context)`"
-                style="font-weight:normal; color:var(--pico-muted-color)"></span>
-          <span x-show="selectedResultIdx < 0"
-                style="font-weight:normal; color:var(--pico-muted-color)">
-            — click any result above to highlight it here
-          </span>
-        </summary>
 
-        <!-- Focused highlighted view (after a result is selected) -->
-        <div x-show="xmlFocusHtml !== ''">
-          <p class="xml-focus-label"
-             x-text="`Chars ${results[selectedResultIdx]?.rawStart ?? '?'}–${results[selectedResultIdx]?.rawEnd ?? '?'} of ${rawXml.length} total`"></p>
-          <pre class="xml-preview" x-html="xmlFocusHtml" x-ref="xmlPreview"></pre>
-        </div>
-
-        <!-- Fallback: first 5 000 chars when nothing selected -->
-        <div x-show="xmlFocusHtml === ''">
-          <p class="xml-focus-label">Showing first 5 000 chars</p>
-          <pre class="xml-preview" x-text="rawXml.slice(0, 5000)"></pre>
-        </div>
-      </details>
-    </section>
 
   </main>
 
@@ -513,32 +557,48 @@
       }
     }
 
-    // Strategy 3: serialization prefix — use progressively shorter slices,
-    // but only accept a slice that contains actual text (not just markup),
-    // so we never accidentally match an empty opening tag like <div>.
+    // Strategy 3: serialization prefix — use progressively shorter slices.
+    // Any real text content (even 1 CJK char) is enough because we match the
+    // full serialised element string, not just a bare opening tag.
     try {
       const clean = new XMLSerializer().serializeToString(node)
         .replace(/ xmlns(?::\w+)?="[^"]*"/g, '');
       for (const len of [clean.length, 600, 300, 150]) {
         if (len > clean.length) continue;
         const fp = clean.slice(0, len);
-        if (fp.replace(/<[^>]*>/g, '').trim().length < 4) continue; // no real text → skip
+        if (fp.replace(/<[^>]*>/g, '').trim().length < 1) continue; // must have some text
         const idx = rawXml.indexOf(fp);
         if (idx !== -1) return { start: idx, end: idx + clean.length };
       }
     } catch (_) {}
 
-    // Strategy 4: first non-trivial text node inside the element — handles the
-    // case where the node has no unique attributes and the serializer whitespace
-    // differs from raw XML.
+    // Strategy 4: anchor on a text node but include its parent element tag so
+    // that even a single CJK char won't match the wrong occurrence.
     const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
     let tn = walker.nextNode();
-    while (tn && tn.nodeValue.trim().length < 5) tn = walker.nextNode();
+    while (tn && tn.nodeValue.trim().length < 1) tn = walker.nextNode();
     if (tn) {
       const sample = tn.nodeValue.trim().slice(0, 40);
-      if (sample.length >= 5) {
-        const textIdx = rawXml.indexOf(sample);
-        if (textIdx !== -1) return boundary(textIdx);
+      if (sample.length >= 1) {
+        // Build a more-unique anchor: "<parentTag...>sample" truncated
+        const pName = tn.parentNode && (tn.parentNode.localName || tn.parentNode.nodeName.replace(/^.*:/, ''));
+        const anchor = pName ? `<${pName}` : '';
+        let pos = -1;
+        if (anchor) {
+          // Find occurrences of the parent opening tag and pick the first one
+          // that is immediately followed (within 200 chars) by our text sample
+          let search = 0;
+          while (search < rawXml.length) {
+            const tagPos = rawXml.indexOf(anchor, search);
+            if (tagPos === -1) break;
+            const window = rawXml.indexOf(sample, tagPos);
+            if (window !== -1 && window - tagPos < 200) { pos = window; break; }
+            search = tagPos + 1;
+          }
+        } else {
+          pos = rawXml.indexOf(sample);
+        }
+        if (pos !== -1) return boundary(pos);
       }
     }
 
@@ -563,9 +623,9 @@
   function xpathExplorer() {
     return {
       // Repo settings
-      owner:  'cbeta-org',
-      repo:   'xml-p5',
-      branch: 'master',
+      owner:  'happypig',
+      repo:   'fsztool',
+      branch: 'main',
       token:  '',
       showToken:    false,
       settingsOpen: false,
@@ -576,8 +636,8 @@
       parseOk:      false,
 
       // Query fields
-      filePath: 'T/T01/T01n0001.xml',
-      xpath: '//tei:p[@xml:id]',
+      filePath: 'xml/y/y001/y001_01.xml',
+      xpath: '//tei:p',
       loading: false,
       statusMsg: '',
       errorMsg: '',
@@ -588,15 +648,15 @@
       xmlFocusHtml: '',
 
       presets: [
-        { label: 'All <p> with xml:id',   file: 'T/T01/T01n0001.xml', xpath: '//tei:p[@xml:id]' },
-        { label: 'All <div> types',        file: 'T/T01/T01n0001.xml', xpath: '//tei:div[@type]' },
-        { label: 'App (variants) notes',   file: 'T/T01/T01n0001.xml', xpath: '//tei:app' },
-        { label: 'Punctuation <pc>',       file: 'T/T01/T01n0001.xml', xpath: '//tei:pc' },
-        { label: 'All <note> elements',    file: 'T/T01/T01n0001.xml', xpath: '//tei:note' },
-        { label: 'Title in teiHeader',     file: 'T/T01/T01n0001.xml', xpath: '//tei:teiHeader//tei:title' },
-        { label: 'Line breaks <lb>',       file: 'T/T01/T01n0001.xml', xpath: '//tei:lb' },
-        { label: 'CB char declarations',   file: 'T/T01/T01n0001.xml', xpath: '//tei:char' },
-        { label: 'Different volume: T02',  file: 'T/T02/T02n0099.xml', xpath: '//tei:p[@xml:id]' },
+        { label: 'All <head>',   file: 'xml/y/y001/y001_01.xml', xpath: '//tei:head' },
+        { label: 'All <head> with type',   file: 'xml/y/y001/y001_01.xml', xpath: '//tei:head[@type]' },
+        { label: 'All <head> without type',   file: 'xml/y/y001/y001_01.xml', xpath: '//tei:head[not(@type)]' },
+        { label: 'All <p> elements',    file: 'xml/y/y001/y001_01.xml', xpath: '//tei:p' },
+        { label: 'All <note> elements',    file: 'xml/y/y001/y001_01.xml', xpath: '//tei:note' },
+        { label: 'All <lg>',        file: 'xml/y/y001/y001_01.xml', xpath: '//tei:lg' },
+        { label: 'All <llist>',        file: 'xml/y/y001/y001_01.xml', xpath: '//tei:llist' },
+        { label: 'All <choice> elements',       file: 'xml/y/y001/y001_01.xml', xpath: '//tei:choice' },
+        { label: 'Position [12][21][14]',  file: 'xml/y/y001/y001_01.xml', xpath: '/*/*[12]/*[21]/*[14]' },
       ],
 
       init() {
@@ -773,7 +833,14 @@
         this.run();
       },
 
-      focusResult(idx) {        const r = this.results[idx];
+      focusResult(idx) {
+        // Toggle off if the same card is clicked again
+        if (this.selectedResultIdx === idx) {
+          this.selectedResultIdx = -1;
+          this.xmlFocusHtml = '';
+          return;
+        }
+        const r = this.results[idx];
         this.selectedResultIdx = idx;
         if (!r || r.rawStart == null) {
           this.xmlFocusHtml = '';
@@ -788,8 +855,8 @@
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
 
-        const ellBefore = from > 0                    ? '<span style="opacity:.45">…</span>' : '';
-        const ellAfter  = to < this.rawXml.length     ? '<span style="opacity:.45">…</span>' : '';
+        const ellBefore = from > 0                 ? '<span style="opacity:.45">…</span>' : '';
+        const ellAfter  = to < this.rawXml.length  ? '<span style="opacity:.45">…</span>' : '';
 
         this.xmlFocusHtml =
           ellBefore +
@@ -797,12 +864,6 @@
           '<mark>' + esc(this.rawXml.slice(r.rawStart, r.rawEnd)) + '</mark>' +
           esc(this.rawXml.slice(r.rawEnd, to)) +
           ellAfter;
-
-        // Scroll the xml panel into view
-        this.$nextTick(() => {
-          const el = document.getElementById('xml-panel');
-          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        });
       },
 
       async run() {
