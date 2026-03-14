@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitHub XML XPath Explorer</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    body { padding: 1rem; }
+
+    .input-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 0.5rem;
+      align-items: end;
+    }
+
+    .input-row label { margin-bottom: 0; }
+
+    .preset-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 1rem;
+    }
+
+    .preset-row button {
+      font-size: 0.8rem;
+      padding: 0.2rem 0.6rem;
+      margin: 0;
+    }
+
+    #results-section { margin-top: 1.5rem; }
+
+    .result-count {
+      font-size: 0.85rem;
+      color: var(--pico-muted-color);
+      margin-bottom: 0.5rem;
+    }
+
+    .result-item {
+      border: 1px solid var(--pico-muted-border-color);
+      border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      margin-bottom: 0.4rem;
+      font-size: 0.9rem;
+      background: var(--pico-card-background-color);
+    }
+
+    .result-item .xml-id {
+      font-size: 0.75rem;
+      color: var(--pico-muted-color);
+      font-family: monospace;
+    }
+
+    .result-locate {
+      float: right;
+      font-size: 0.7rem;
+      color: var(--pico-primary);
+    }
+
+    .fsz-link {
+      display: inline-block;
+      font-size: 0.75rem;
+      word-break: break-all;
+      color: var(--pico-primary);
+    }
+
+    .result-item .content {
+      margin-top: 0.25rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .raw-xml-section { margin-top: 1.5rem; }
+
+    details summary { cursor: pointer; }
+
+    pre.xml-preview {
+      font-size: 0.75rem;
+      max-height: 400px;
+      overflow: auto;
+      background: var(--pico-code-background-color);
+      padding: 0.75rem;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    pre.xml-preview mark {
+      background: #ffe066;
+      color: inherit;
+      border-radius: 2px;
+      padding: 0 1px;
+      outline: 2px solid #f0a500;
+    }
+
+    .xml-focus-label {
+      font-size: 0.75rem;
+      color: var(--pico-muted-color);
+      margin-bottom: 0.25rem;
+    }
+
+    .result-item {
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    .result-item:hover {
+      border-color: var(--pico-primary);
+    }
+
+    .result-item.selected {
+      border-color: var(--pico-primary);
+      background: var(--pico-primary-background);
+    }
+
+    .error-msg {
+      color: var(--pico-del-color);
+      padding: 0.5rem;
+      border: 1px solid var(--pico-del-color);
+      border-radius: 4px;
+    }
+
+    .attr-badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-family: monospace;
+      background: var(--pico-primary-background);
+      color: var(--pico-primary);
+      border-radius: 3px;
+      padding: 0 0.3rem;
+      margin-right: 0.3rem;
+    }
+
+    .status-bar {
+      font-size: 0.8rem;
+      color: var(--pico-muted-color);
+      min-height: 1.2em;
+    }
+
+    progress { margin: 0; }
+
+    .repo-settings {
+      border: 1px solid var(--pico-muted-border-color);
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .repo-settings summary {
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 0.9rem;
+      user-select: none;
+    }
+
+    .repo-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 0.6fr;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+
+    .token-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 0.5rem;
+      align-items: end;
+      margin-top: 0.5rem;
+    }
+
+    .token-row label { margin-bottom: 0; }
+
+    .token-hint {
+      font-size: 0.75rem;
+      color: var(--pico-muted-color);
+      margin-top: 0.35rem;
+    }
+
+    .badge-private {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: bold;
+      background: #e8a000;
+      color: #fff;
+      border-radius: 3px;
+      padding: 0 0.35rem;
+      vertical-align: middle;
+      margin-left: 0.4rem;
+    }
+
+    .badge-public {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: bold;
+      background: #4caf50;
+      color: #fff;
+      border-radius: 3px;
+      padding: 0 0.35rem;
+      vertical-align: middle;
+      margin-left: 0.4rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="container" x-data="xpathExplorer()" x-init="init()">
+
+    <hgroup>
+      <h1>GitHub XML XPath Explorer</h1>
+      <p>
+        Fetch XML from any GitHub repository and query with XPath.
+        <span x-show="!token" class="badge-public">PUBLIC</span>
+        <span x-show="token"  class="badge-private">PRIVATE (token set)</span>
+      </p>
+    </hgroup>
+
+    <!-- ── Paste GitHub URL shortcut ────────────────────────────── -->
+    <div style="display:grid; grid-template-columns:1fr auto; gap:0.5rem; margin-bottom:0.75rem; align-items:end">
+      <label style="margin-bottom:0">
+        Paste a GitHub URL to auto-fill all fields
+        <input type="text" x-model="pasteUrl"
+               placeholder="https://github.com/owner/repo/blob/branch/path/to/file.xml"
+               @keydown.enter="parseGithubUrl()" @paste="$nextTick(() => parseGithubUrl())">
+      </label>
+      <button class="outline" @click="parseGithubUrl()">Fill</button>
+    </div>
+    <div x-show="parseMsg" x-text="parseMsg"
+         :style="parseOk ? 'color:var(--pico-ins-color)' : 'color:var(--pico-del-color)'"
+         style="font-size:0.8rem; margin-bottom:0.5rem"></div>
+
+    <!-- ── Repository Settings ───────────────────────────────────── -->
+    <details class="repo-settings" :open="settingsOpen">
+      <summary @click.prevent="settingsOpen = !settingsOpen">
+        Repository Settings
+        <small x-text="` — ${owner}/${repo} @ ${branch}`" style="font-weight:normal; color:var(--pico-muted-color)"></small>
+      </summary>
+
+      <div class="repo-row">
+        <label>
+          Owner
+          <input type="text" x-model="owner" placeholder="e.g. cbeta-org" @change="saveSettings()">
+        </label>
+        <label>
+          Repository
+          <input type="text" x-model="repo" placeholder="e.g. xml-p5" @change="saveSettings()">
+        </label>
+        <label>
+          Branch / Tag
+          <input type="text" x-model="branch" placeholder="e.g. master" @change="saveSettings()">
+        </label>
+      </div>
+
+      <div class="token-row">
+        <label>
+          GitHub Personal Access Token
+          <input :type="showToken ? 'text' : 'password'" x-model="token"
+                 placeholder="ghp_… (required for private repos)"
+                 @change="saveSettings()" autocomplete="off">
+        </label>
+        <div>
+          <label>&nbsp;</label>
+          <button class="outline secondary" style="white-space:nowrap"
+                  @click="showToken = !showToken"
+                  x-text="showToken ? 'Hide' : 'Show'"></button>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button class="outline secondary" @click="clearToken()">Clear</button>
+        </div>
+      </div>
+
+      <p class="token-hint">
+        Token is stored in <strong>localStorage</strong> (this browser only) and sent only to
+        <code>api.github.com</code> / <code>raw.githubusercontent.com</code>.
+        Required scope: <code>repo</code> (private) or none (public).
+        For public repos the token is optional but raises rate limits.
+      </p>
+
+      <button class="outline" @click="testConnection()" :aria-busy="testing" :disabled="testing || loading">
+        Test Connection
+      </button>
+
+      <!-- Diagnostics output -->
+      <div x-show="diagLines.length > 0" style="margin-top:0.75rem">
+        <table style="font-size:0.8rem; width:100%; border-collapse:collapse">
+          <tbody>
+            <template x-for="d in diagLines" :key="d.label">
+              <tr>
+                <td style="width:1.5rem; text-align:center" x-text="d.ok === true ? '✅' : d.ok === false ? '❌' : '⚠️'"></td>
+                <td style="padding:0.1rem 0.5rem; font-weight:bold; white-space:nowrap" x-text="d.label"></td>
+                <td style="padding:0.1rem 0.5rem; word-break:break-all; color:var(--pico-muted-color)" x-text="d.detail"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <!-- ── Inputs ─────────────────────────────────────────────────── -->
+    <div class="input-row">
+      <label>
+        File path
+        <input type="text" x-model="filePath" placeholder="e.g. T/T01/T01n0001.xml"
+               @keydown.enter="run()" :disabled="loading">
+      </label>
+      <label>
+        XPath expression
+        <input type="text" x-model="xpath" placeholder="e.g. //tei:p[@xml:id]"
+               @keydown.enter="run()" :disabled="loading">
+      </label>
+      <div>
+        <label>&nbsp;</label>
+        <button @click="run()" :aria-busy="loading" :disabled="loading">
+          <span x-text="loading ? 'Loading…' : 'Query'"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Presets ────────────────────────────────────────────────── -->
+    <p style="margin-bottom:0.3rem; font-size:0.85rem; color:var(--pico-muted-color)">Quick presets:</p>
+    <div class="preset-row">
+      <template x-for="p in presets" :key="p.label">
+        <button class="outline secondary" @click="applyPreset(p)" :disabled="loading"
+                x-text="p.label"></button>
+      </template>
+    </div>
+
+    <!-- ── Status ─────────────────────────────────────────────────── -->
+    <div class="status-bar" x-text="statusMsg"></div>
+    <progress x-show="loading" style="margin-top:0.25rem"></progress>
+
+    <!-- ── Error ──────────────────────────────────────────────────── -->
+    <div class="error-msg" x-show="errorMsg" x-text="errorMsg" style="margin-top:0.5rem"></div>
+
+    <!-- ── Results ────────────────────────────────────────────────── -->
+    <section id="results-section" x-show="results.length > 0">
+      <div class="result-count">
+        Found <strong x-text="results.length"></strong> node(s)
+        — showing first <strong x-text="Math.min(results.length, maxDisplay)"></strong>
+        <span x-show="results.length > maxDisplay">
+          (<a href="#" @click.prevent="maxDisplay += 50">show more</a>)
+        </span>
+      </div>
+
+      <template x-for="(r, i) in results.slice(0, maxDisplay)" :key="i">
+        <div class="result-item"
+             :class="{ selected: selectedResultIdx === i }"
+             @click="focusResult(i)"
+             :title="r.rawStart != null ? 'Click to highlight in raw XML below' : 'Position in raw XML not found'">
+          <div>
+            <span x-show="r.rawStart != null" class="result-locate">📍 view in XML ↓</span>
+            <template x-for="(v, k) in r.attrs" :key="k">
+              <span class="attr-badge" x-text="`${k}=&quot;${v}&quot;`"></span>
+            </template>
+            <span class="xml-id" x-text="`<${r.nodeName}>`"></span>
+          </div>
+          <div class="content" x-text="r.text"></div>
+          <!-- FSZ link -->
+          <div x-show="r.pbN" style="margin-top:0.4rem" @click.stop>
+            <a :href="fszUrlFor(r)" target="_blank" rel="noopener"
+               class="fsz-link"
+               x-text="`🔗 Open in FSZ — ${fszUrlFor(r)}`"></a>
+          </div>
+          <div x-show="!r.pbN" style="font-size:0.72rem; color:var(--pico-muted-color); margin-top:0.3rem">
+            No preceding &lt;pb&gt; found — FSZ link unavailable
+          </div>
+        </div>
+      </template>
+    </section>
+
+    <!-- ── Raw XML preview ───────────────────────────────────────── -->
+    <section class="raw-xml-section" x-show="rawXml" id="xml-panel">
+      <details :open="xmlFocusHtml !== ''">
+        <summary>
+          Raw XML
+          <span x-show="selectedResultIdx >= 0"
+                x-text="`— result #${selectedResultIdx + 1} highlighted (±500 chars context)`"
+                style="font-weight:normal; color:var(--pico-muted-color)"></span>
+          <span x-show="selectedResultIdx < 0"
+                style="font-weight:normal; color:var(--pico-muted-color)">
+            — click any result above to highlight it here
+          </span>
+        </summary>
+
+        <!-- Focused highlighted view (after a result is selected) -->
+        <div x-show="xmlFocusHtml !== ''">
+          <p class="xml-focus-label"
+             x-text="`Chars ${results[selectedResultIdx]?.rawStart ?? '?'}–${results[selectedResultIdx]?.rawEnd ?? '?'} of ${rawXml.length} total`"></p>
+          <pre class="xml-preview" x-html="xmlFocusHtml" x-ref="xmlPreview"></pre>
+        </div>
+
+        <!-- Fallback: first 5 000 chars when nothing selected -->
+        <div x-show="xmlFocusHtml === ''">
+          <p class="xml-focus-label">Showing first 5 000 chars</p>
+          <pre class="xml-preview" x-text="rawXml.slice(0, 5000)"></pre>
+        </div>
+      </details>
+    </section>
+
+  </main>
+
+  <script>
+  // ── Namespace resolver for TEI P5 + CBETA ──────────────────────
+  const NS_MAP = {
+    tei: 'http://www.tei-c.org/ns/1.0',
+    cb:  'http://www.cbeta.org/ns/1.0',
+    xml: 'http://www.w3.org/XML/1998/namespace'
+  };
+
+  function nsResolver(prefix) {
+    return NS_MAP[prefix] || null;
+  }
+
+  // ── URL / fetch-config builders ────────────────────────────────
+  function toRawUrl(owner, repo, branch, filePath) {
+    return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath.replace(/^\//, '')}`;
+  }
+
+  function toContentsApiUrl(owner, repo, branch, filePath) {
+    return `https://api.github.com/repos/${owner}/${repo}/contents/${filePath.replace(/^\//, '')}?ref=${branch}`;
+  }
+
+  // Decode base64 content from GitHub Contents API (UTF-8 safe)
+  function decodeBase64Utf8(b64) {
+    const binary = atob(b64.replace(/\n/g, ''));
+    const bytes  = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+
+  // ── FSZ helpers ───────────────────────────────────────────────
+  // Derive book id from file path, e.g. "xml/y/y001/y001_01.xml" → "y001"
+  function bookFromPath(filePath) {
+    const parts = filePath.replace(/\\/g, '/').split('/');
+    // The folder just before the filename is the book id
+    if (parts.length >= 2) return parts[parts.length - 2];
+    return null;
+  }
+
+  // Find the nearest preceding <pb> element and return its n attribute
+  function nearestPb(node) {
+    // Walk backwards through the document tree (preceding-sibling + ancestors)
+    let cur = node;
+    while (cur) {
+      // Check preceding siblings and their descendants (deepest last child first)
+      let sib = cur.previousSibling;
+      while (sib) {
+        const pb = lastDescendantPb(sib) || (sib.localName === 'pb' ? sib : null);
+        if (pb) return pb.getAttribute('n');
+        sib = sib.previousSibling;
+      }
+      cur = cur.parentNode;
+    }
+    return null;
+  }
+
+  // Return the deepest last-child <pb> within a subtree, or null
+  function lastDescendantPb(node) {
+    if (!node || node.nodeType !== 1) return null;
+    let found = null;
+    if (node.localName === 'pb') found = node;
+    for (const child of node.children || []) {
+      const inner = lastDescendantPb(child);
+      if (inner) found = inner;
+    }
+    return found;
+  }
+
+  function fszUrl(book, cpage) {
+    return `http://buddhistinformatics.dila.edu.tw/fosizhi/ui.html?book=${encodeURIComponent(book)}&cpage=${encodeURIComponent(cpage)}`;
+  }
+
+  // ── Locate a DOM node's character range in the raw XML string ──
+  // Returns {start, end} indices in rawXml, or null if not found.
+  function locateNodeInRaw(rawXml, node) {
+    if (!node || node.nodeType !== 1) return null;
+
+    const localName = node.localName || node.nodeName.replace(/^.*:/, '');
+    const closeStr  = `</${localName}>`;
+
+    // Given a position known to be inside the element, expand to element boundary.
+    function boundary(innerPos) {
+      // Walk back to find the opening '<' that starts our element
+      let start = rawXml.lastIndexOf('<' + localName, innerPos);
+      if (start === -1) return null;
+      const closePos = rawXml.indexOf(closeStr, innerPos);
+      if (closePos === -1) return null;
+      return { start, end: closePos + closeStr.length };
+    }
+
+    // Strategy 1: xml:id attribute — unique, most reliable
+    const xmlId = node.getAttribute && node.getAttribute('xml:id');
+    if (xmlId) {
+      const pos = rawXml.indexOf(`xml:id="${xmlId}"`);
+      if (pos !== -1) return boundary(pos);
+    }
+
+    // Strategy 2: other attribute values — search each individually (avoids
+    // attribute-ordering mismatch from XMLSerializer)
+    if (node.attributes) {
+      // Sort by value length descending — longer values are more unique
+      const attrs = Array.from(node.attributes)
+        .filter(a => a.name !== 'xml:id' && a.value.length >= 4)
+        .sort((a, b) => b.value.length - a.value.length);
+      for (const a of attrs) {
+        const pos = rawXml.indexOf(`${a.name}="${a.value}"`);
+        if (pos !== -1) {
+          const r = boundary(pos);
+          if (r) return r;
+        }
+      }
+    }
+
+    // Strategy 3: serialization prefix — use progressively shorter slices,
+    // but only accept a slice that contains actual text (not just markup),
+    // so we never accidentally match an empty opening tag like <div>.
+    try {
+      const clean = new XMLSerializer().serializeToString(node)
+        .replace(/ xmlns(?::\w+)?="[^"]*"/g, '');
+      for (const len of [clean.length, 600, 300, 150]) {
+        if (len > clean.length) continue;
+        const fp = clean.slice(0, len);
+        if (fp.replace(/<[^>]*>/g, '').trim().length < 4) continue; // no real text → skip
+        const idx = rawXml.indexOf(fp);
+        if (idx !== -1) return { start: idx, end: idx + clean.length };
+      }
+    } catch (_) {}
+
+    // Strategy 4: first non-trivial text node inside the element — handles the
+    // case where the node has no unique attributes and the serializer whitespace
+    // differs from raw XML.
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+    let tn = walker.nextNode();
+    while (tn && tn.nodeValue.trim().length < 5) tn = walker.nextNode();
+    if (tn) {
+      const sample = tn.nodeValue.trim().slice(0, 40);
+      if (sample.length >= 5) {
+        const textIdx = rawXml.indexOf(sample);
+        if (textIdx !== -1) return boundary(textIdx);
+      }
+    }
+
+    return null;
+  }
+
+  // ── Extract useful attributes from a node ──────────────────────
+  function extractAttrs(node) {
+    const attrs = {};
+    if (!node.attributes) return attrs;
+    for (const a of node.attributes) {
+      // Only show the most useful attributes to keep display compact
+      const keep = ['xml:id', 'type', 'n', 'rend', 'place', 'unit', 'from', 'to'];
+      if (keep.includes(a.name) || a.name.startsWith('xml:')) {
+        attrs[a.name] = a.value;
+      }
+    }
+    return attrs;
+  }
+
+  // ── Alpine component ───────────────────────────────────────────
+  function xpathExplorer() {
+    return {
+      // Repo settings
+      owner:  'cbeta-org',
+      repo:   'xml-p5',
+      branch: 'master',
+      token:  '',
+      showToken:    false,
+      settingsOpen: false,
+      testing:      false,
+      diagLines:    [],
+      pasteUrl:     '',
+      parseMsg:     '',
+      parseOk:      false,
+
+      // Query fields
+      filePath: 'T/T01/T01n0001.xml',
+      xpath: '//tei:p[@xml:id]',
+      loading: false,
+      statusMsg: '',
+      errorMsg: '',
+      results: [],
+      rawXml: '',
+      maxDisplay: 50,
+      selectedResultIdx: -1,
+      xmlFocusHtml: '',
+
+      presets: [
+        { label: 'All <p> with xml:id',   file: 'T/T01/T01n0001.xml', xpath: '//tei:p[@xml:id]' },
+        { label: 'All <div> types',        file: 'T/T01/T01n0001.xml', xpath: '//tei:div[@type]' },
+        { label: 'App (variants) notes',   file: 'T/T01/T01n0001.xml', xpath: '//tei:app' },
+        { label: 'Punctuation <pc>',       file: 'T/T01/T01n0001.xml', xpath: '//tei:pc' },
+        { label: 'All <note> elements',    file: 'T/T01/T01n0001.xml', xpath: '//tei:note' },
+        { label: 'Title in teiHeader',     file: 'T/T01/T01n0001.xml', xpath: '//tei:teiHeader//tei:title' },
+        { label: 'Line breaks <lb>',       file: 'T/T01/T01n0001.xml', xpath: '//tei:lb' },
+        { label: 'CB char declarations',   file: 'T/T01/T01n0001.xml', xpath: '//tei:char' },
+        { label: 'Different volume: T02',  file: 'T/T02/T02n0099.xml', xpath: '//tei:p[@xml:id]' },
+      ],
+
+      init() {
+        // Restore settings from localStorage
+        const saved = localStorage.getItem('ghXpathExplorerSettings');
+        if (saved) {
+          try {
+            const s = JSON.parse(saved);
+            if (s.owner)  this.owner  = s.owner;
+            if (s.repo)   this.repo   = s.repo;
+            if (s.branch) this.branch = s.branch;
+            if (s.token)  this.token  = s.token;
+          } catch (_) {}
+        }
+        this.statusMsg = 'Enter a file path and XPath, then press Query.';
+      },
+
+      saveSettings() {
+        localStorage.setItem('ghXpathExplorerSettings', JSON.stringify({
+          owner: this.owner, repo: this.repo, branch: this.branch, token: this.token
+        }));
+      },
+
+      clearToken() {
+        this.token = '';
+        this.saveSettings();
+      },
+
+      parseGithubUrl() {
+        const raw = this.pasteUrl.trim();
+        if (!raw) return;
+
+        // Accepted patterns:
+        // https://github.com/owner/repo/blob/branch/path/to/file.xml
+        // https://raw.githubusercontent.com/owner/repo/branch/path/to/file.xml
+        const blobMatch = raw.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/);
+        const rawMatch  = raw.match(/^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/);
+
+        const m = blobMatch || rawMatch;
+        if (m) {
+          this.owner    = m[1];
+          this.repo     = m[2];
+          this.branch   = m[3];
+          this.filePath = m[4];
+          this.saveSettings();
+          this.parseOk  = true;
+          this.parseMsg = `✓ Filled: ${m[1]}/${m[2]} @ ${m[3]} — ${m[4]}`;
+          this.pasteUrl = '';
+        } else {
+          this.parseOk  = false;
+          this.parseMsg = 'Could not parse URL. Expected: https://github.com/{owner}/{repo}/blob/{branch}/{path}';
+        }
+      },
+
+      async testConnection() {
+        this.testing   = true;
+        this.diagLines = [];
+        const diag     = (label, ok, detail) => this.diagLines.push({ label, ok, detail });
+
+        const owner  = this.owner.trim();
+        const repo   = this.repo.trim();
+        const branch = this.branch.trim();
+        const token  = this.token.trim();
+        const fp     = this.filePath.trim();
+
+        const headers = token
+          ? { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
+          : { 'Accept': 'application/vnd.github+json' };
+
+        // ── 1. Check token identity (/user) ──
+        if (token) {
+          try {
+            const r = await fetch('https://api.github.com/user', { headers });
+            if (r.ok) {
+              const u = await r.json();
+              diag('Token identity', true, `Authenticated as @${u.login} (${u.name || ''})`);
+            } else if (r.status === 401) {
+              diag('Token identity', false, 'Token is invalid or expired (401 Unauthorized). Generate a new one.');
+            } else {
+              diag('Token identity', null, `HTTP ${r.status}`);
+            }
+          } catch (e) {
+            diag('Token identity', false, e.message);
+          }
+        } else {
+          diag('Token identity', null, 'No token — unauthenticated (60 req/hr limit, no private repo access)');
+        }
+
+        // ── 2. Check repo access (GET /repos/:owner/:repo) ──
+        const repoUrl = `https://api.github.com/repos/${owner}/${repo}`;
+        try {
+          const r = await fetch(repoUrl, { headers });
+          if (r.ok) {
+            const rj = await r.json();
+            diag('Repo access', true, `Found: ${rj.full_name} (${rj.private ? 'private' : 'public'}), default branch: ${rj.default_branch}`);
+            if (rj.private && !token) {
+              diag('Private repo + no token', false, 'Repo is private but no token was provided. Add a token above.');
+            }
+          } else if (r.status === 404) {
+            const errJ = await r.json().catch(() => ({}));
+            diag('Repo access', false,
+              `404 Not Found — "${owner}/${repo}" does not exist or your token cannot see it. ` +
+              (token
+                ? 'For org repos, check that the org admin approved your fine-grained token (GitHub → org Settings → Third-party Access → Pending requests).'
+                : 'The repo may be private — add a token.') +
+              (errJ.message ? ` (API: ${errJ.message})` : ''));
+          } else if (r.status === 403) {
+            diag('Repo access', false, `403 Forbidden — token lacks "Contents: Read" permission or org SSO is not authorised for this token.`);
+          } else {
+            const errJ = await r.json().catch(() => ({}));
+            diag('Repo access', false, `HTTP ${r.status}: ${errJ.message || r.statusText}`);
+          }
+        } catch (e) {
+          diag('Repo access', false, e.message);
+        }
+
+        // ── 3. Check branch ──
+        if (branch) {
+          const branchUrl = `https://api.github.com/repos/${owner}/${repo}/branches/${branch}`;
+          try {
+            const r = await fetch(branchUrl, { headers });
+            if (r.ok) {
+              diag('Branch', true, `"${branch}" exists`);
+            } else if (r.status === 404) {
+              // Try to list branches so user can see valid options
+              const listR = await fetch(`https://api.github.com/repos/${owner}/${repo}/branches?per_page=20`, { headers });
+              if (listR.ok) {
+                const branches = await listR.json();
+                const names = branches.map(b => b.name).join(', ');
+                diag('Branch', false, `"${branch}" not found. Available branches: ${names}`);
+              } else {
+                diag('Branch', false, `"${branch}" not found (HTTP 404)`);
+              }
+            } else {
+              diag('Branch', null, `HTTP ${r.status}`);
+            }
+          } catch (e) {
+            diag('Branch', false, e.message);
+          }
+        }
+
+        // ── 4. Check file path ──
+        if (fp) {
+          const fileUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${fp.replace(/^\//, '')}?ref=${branch}`;
+          try {
+            const r = await fetch(fileUrl, { headers });
+            if (r.ok) {
+              const fj = await r.json();
+              diag('File path', true, `"${fp}" found (${(fj.size / 1024).toFixed(0)} KB, sha: ${fj.sha?.slice(0,7)})`);
+            } else if (r.status === 404) {
+              diag('File path', false, `"${fp}" not found on branch "${branch}". Check spelling and path separators (use /).`);
+            } else {
+              const errJ = await r.json().catch(() => ({}));
+              diag('File path', false, `HTTP ${r.status}: ${errJ.message || r.statusText}`);
+            }
+          } catch (e) {
+            diag('File path', false, e.message);
+          }
+        }
+
+        this.testing = false;
+      },
+
+      fszUrlFor(r) {
+        const book  = bookFromPath(this.filePath);
+        const cpage = r.pbN;
+        if (!book || !cpage) return '#';
+        return fszUrl(book, cpage);
+      },
+
+      applyPreset(p) {
+        this.filePath = p.file;
+        this.xpath    = p.xpath;
+        this.run();
+      },
+
+      focusResult(idx) {        const r = this.results[idx];
+        this.selectedResultIdx = idx;
+        if (!r || r.rawStart == null) {
+          this.xmlFocusHtml = '';
+          return;
+        }
+        const ctx  = 500;
+        const from = Math.max(0, r.rawStart - ctx);
+        const to   = Math.min(this.rawXml.length, r.rawEnd + ctx);
+
+        const esc = s => s
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+
+        const ellBefore = from > 0                    ? '<span style="opacity:.45">…</span>' : '';
+        const ellAfter  = to < this.rawXml.length     ? '<span style="opacity:.45">…</span>' : '';
+
+        this.xmlFocusHtml =
+          ellBefore +
+          esc(this.rawXml.slice(from, r.rawStart)) +
+          '<mark>' + esc(this.rawXml.slice(r.rawStart, r.rawEnd)) + '</mark>' +
+          esc(this.rawXml.slice(r.rawEnd, to)) +
+          ellAfter;
+
+        // Scroll the xml panel into view
+        this.$nextTick(() => {
+          const el = document.getElementById('xml-panel');
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+      },
+
+      async run() {
+        if (!this.filePath.trim() || !this.xpath.trim()) return;
+
+        this.loading   = true;
+        this.errorMsg  = '';
+        this.results   = [];
+        this.rawXml    = '';
+        this.maxDisplay = 50;
+        this.selectedResultIdx = -1;
+        this.xmlFocusHtml = '';
+
+        const fp     = this.filePath.trim();
+        const owner  = this.owner.trim()  || 'cbeta-org';
+        const repo   = this.repo.trim()   || 'xml-p5';
+        const branch = this.branch.trim() || 'master';
+        const token  = this.token.trim();
+
+        this.statusMsg = token
+          ? `Using Contents API (authenticated) for ${owner}/${repo}…`
+          : `Using raw URL (public) for ${owner}/${repo}…`;
+
+        try {
+          // 1. Fetch — two strategies depending on whether a token is provided
+          let text;
+          if (token) {
+            // ── Private (or authenticated public): GitHub Contents API ──
+            const apiUrl = toContentsApiUrl(owner, repo, branch, fp);
+            this.statusMsg = `GET ${apiUrl} …`;
+            const res = await fetch(apiUrl, {
+              headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28'
+              }
+            });
+            if (!res.ok) {
+              const errJson = await res.json().catch(() => ({}));
+              throw new Error(`GitHub API ${res.status}: ${errJson.message || res.statusText}`);
+            }
+            const json = await res.json();
+
+            if (json.content) {
+              // File ≤ 1 MB: inline base64 content
+              text = decodeBase64Utf8(json.content);
+            } else if (json.download_url) {
+              // File > 1 MB: fetch via signed download URL
+              this.statusMsg = `File > 1 MB — fetching download_url…`;
+              const dlRes = await fetch(json.download_url, {
+                headers: { 'Authorization': `token ${token}` }
+              });
+              if (!dlRes.ok) throw new Error(`download_url HTTP ${dlRes.status}`);
+              text = await dlRes.text();
+            } else {
+              throw new Error(json.message || 'No content or download_url in response');
+            }
+          } else {
+            // ── Public: raw.githubusercontent.com ──
+            const rawUrl = toRawUrl(owner, repo, branch, fp);
+            this.statusMsg = `GET ${rawUrl} …`;
+            const res = await fetch(rawUrl);
+            if (!res.ok) throw new Error(`HTTP ${res.status} — ${rawUrl}`);
+            text = await res.text();
+          }
+
+          this.rawXml = text;
+          this.statusMsg = `Fetched ${(text.length / 1024).toFixed(0)} KB — evaluating XPath…`;
+
+          // 2. Parse
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(text, 'application/xml');
+
+          const parseErr = doc.querySelector('parsererror');
+          if (parseErr) throw new Error('XML parse error: ' + parseErr.textContent.slice(0, 200));
+
+          // 3. XPath evaluate
+          const xpathExpr = this.xpath.trim();
+          let xpResult;
+          try {
+            xpResult = doc.evaluate(xpathExpr, doc, nsResolver, XPathResult.ANY_TYPE, null);
+          } catch (e) {
+            throw new Error(`XPath error: ${e.message}`);
+          }
+
+          // 4. Collect results
+          const nodes = [];
+          if (xpResult.resultType === XPathResult.STRING_TYPE) {
+            nodes.push({ nodeName: 'string()', attrs: {}, text: xpResult.stringValue, rawStart: null, rawEnd: null });
+          } else if (xpResult.resultType === XPathResult.NUMBER_TYPE) {
+            nodes.push({ nodeName: 'number()', attrs: {}, text: String(xpResult.numberValue), rawStart: null, rawEnd: null });
+          } else if (xpResult.resultType === XPathResult.BOOLEAN_TYPE) {
+            nodes.push({ nodeName: 'boolean()', attrs: {}, text: String(xpResult.booleanValue), rawStart: null, rawEnd: null });
+          } else {
+            let node = xpResult.iterateNext();
+            while (node) {
+              const loc = locateNodeInRaw(text, node);
+              nodes.push({
+                nodeName: node.nodeName || '#text',
+                attrs:    extractAttrs(node),
+                text:     (node.textContent || node.nodeValue || '').trim().slice(0, 500),
+                rawStart: loc ? loc.start : null,
+                rawEnd:   loc ? loc.end   : null,
+                pbN:      nearestPb(node),
+              });
+              node = xpResult.iterateNext();
+            }
+          }
+
+          this.results   = nodes;
+          this.statusMsg = `Done — ${nodes.length} node(s) matched.`;
+
+          // Auto-highlight the first match
+          if (nodes.length > 0 && nodes[0].rawStart != null) {
+            this.$nextTick(() => this.focusResult(0));
+          }
+
+        } catch (err) {
+          this.errorMsg  = err.message;
+          this.statusMsg = 'Error.';
+        } finally {
+          this.loading = false;
+        }
+      }
+    };
+  }
+  </script>
+</body>
+</html>
