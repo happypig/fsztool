@@ -393,7 +393,7 @@
         Found <strong x-text="results.length"></strong> node(s)
         — showing first <strong x-text="Math.min(results.length, maxDisplay)"></strong>
         <span x-show="results.length > maxDisplay">
-          (<a href="#" @click.prevent="maxDisplay += 50">show more</a>)
+          (<a href="#" @click.prevent="maxDisplay += DISPLAY_DEFAULTS.INCREMENT_STEP">show more</a>)
         </span>
       </div>
 
@@ -456,6 +456,12 @@
   function nsResolver(prefix) {
     return NS_MAP[prefix] || null;
   }
+
+  // ── Display configuration ──────────────────────────────────────
+  const DISPLAY_DEFAULTS = {
+    INITIAL_DISPLAY: 50,  // How many results to show initially per query
+    INCREMENT_STEP: 50    // How many more to show when clicking "show more"
+  };
 
   // ── URL / fetch-config builders ────────────────────────────────
   function toRawUrl(owner, repo, branch, filePath) {
@@ -665,7 +671,7 @@
       errorMsg: '',
       results: [],
       rawXml: '',
-      maxDisplay: 20,
+      maxDisplay: DISPLAY_DEFAULTS.INITIAL_DISPLAY,
       selectedResultIdx: -1,
       xmlFocusHtml: '',
 
@@ -932,7 +938,7 @@
         this.errorMsg  = '';
         this.results   = [];
         this.rawXml    = '';
-        this.maxDisplay = 50;
+        this.maxDisplay = DISPLAY_DEFAULTS.INITIAL_DISPLAY;
         this.selectedResultIdx = -1;
         this.xmlFocusHtml = '';
 
