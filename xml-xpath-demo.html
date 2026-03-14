@@ -850,7 +850,7 @@
       },
 
       applyPreset(p) {
-        this.filePath = p.file;
+        if (!this.filePath.trim()) this.filePath = p.file;
         this.xpath    = p.xpath;
         this.run();
       },
