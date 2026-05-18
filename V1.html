@@ -2806,6 +2806,14 @@ const PUNCTUATION_NAMES = {
   '∅': '無標點' // Note: for internal use to denote no punctuation
 };
 
+const OPENING_ANNOTATION_PUNCTUATION_CHARS = '「『《〈（【〔﹁';
+const CLOSING_ANNOTATION_PUNCTUATION_CHARS = '」』》〉）】〕﹂';
+const ANNOTATION_PUNCTUATION_CHARS = `${OPENING_ANNOTATION_PUNCTUATION_CHARS}${CLOSING_ANNOTATION_PUNCTUATION_CHARS}`;
+const SEPARATOR_PUNCTUATION_CHARS = '，。！？；：、．…—～.';
+// O(1) lookup sets derived from the char strings above
+const ANNOTATION_PUNCTUATION_SET = new Set(ANNOTATION_PUNCTUATION_CHARS);
+const SEPARATOR_PUNCTUATION_SET = new Set(SEPARATOR_PUNCTUATION_CHARS);
+
 /**  
  * Get standard punctuation name
  * @param {string} punct - Punctuation character
@@ -6044,9 +6052,108 @@ function alignCandidateCharsToBaseText(baseChars, candidateChars, stripPunctuati
   };
 }
 
-function alignCandidateCharsToOriginalSlots(originalChars, candidateChars) {
-  const aligned = Array(originalChars.length).fill('');
-  if (!originalChars.length) {
+function punctuationAlignmentRoleForChar(char) {
+  const value = String(char || '');
+  if (!value) {
+    return 'other';
+  }
+  if (OPENING_ANNOTATION_PUNCTUATION_CHARS.includes(value)) {
+    return 'annotation-open';
+  }
+  if (CLOSING_ANNOTATION_PUNCTUATION_CHARS.includes(value)) {
+    return 'annotation-close';
+  }
+  if (SEPARATOR_PUNCTUATION_CHARS.includes(value)) {
+    return 'separator';
+  }
+  if (ANNOTATION_PUNCTUATION_CHARS.includes(value)) {
+    return 'annotation';
+  }
+  return 'other';
+}
+
+function supportsFunctionAlignedReferenceChars(referenceChars) {
+  if (!Array.isArray(referenceChars) || referenceChars.length <= 1) {
+    return false;
+  }
+  const roles = new Set(referenceChars.map(punctuationAlignmentRoleForChar).filter(role => role !== 'other'));
+  return roles.size > 1;
+}
+
+function scoreFunctionAlignedReferenceChars(referenceChars) {
+  const roles = new Set((referenceChars || []).map(punctuationAlignmentRoleForChar).filter(role => role !== 'other'));
+  return {
+    roleCount: roles.size,
+    length: Array.isArray(referenceChars) ? referenceChars.length : 0
+  };
+}
+
+function selectFunctionAlignedReferenceChars(candidates, basePosition) {
+  return (Array.isArray(candidates) ? candidates : [])
+    .map(candidate => (
+      candidate?.charMap instanceof Map
+        ? (candidate.charMap.get(basePosition) || []).slice()
+        : []
+    ))
+    .filter(referenceChars => supportsFunctionAlignedReferenceChars(referenceChars))
+    .sort((left, right) => {
+      const leftScore = scoreFunctionAlignedReferenceChars(left);
+      const rightScore = scoreFunctionAlignedReferenceChars(right);
+      if (rightScore.roleCount !== leftScore.roleCount) {
+        return rightScore.roleCount - leftScore.roleCount;
+      }
+      return rightScore.length - leftScore.length;
+    })[0] || [];
+}
+
+function alignCandidateCharsToReferenceRoles(referenceChars, candidateChars) {
+  const aligned = Array(referenceChars.length).fill('');
+  const referenceRoles = referenceChars.map(punctuationAlignmentRoleForChar);
+  const deferred = [];
+  let minSlotIndex = 0;
+
+  candidateChars.forEach(char => {
+    const role = punctuationAlignmentRoleForChar(char);
+    let matchedSlotIndex = -1;
+    if (role !== 'other') {
+      for (let slotIndex = minSlotIndex; slotIndex < referenceRoles.length; slotIndex += 1) {
+        if (aligned[slotIndex] === '' && referenceRoles[slotIndex] === role) {
+          matchedSlotIndex = slotIndex;
+          break;
+        }
+      }
+    }
+    if (matchedSlotIndex === -1) {
+      deferred.push(char);
+      return;
+    }
+    aligned[matchedSlotIndex] = char;
+    minSlotIndex = matchedSlotIndex + 1;
+  });
+
+  const remainingSlots = [];
+  for (let slotIndex = 0; slotIndex < aligned.length; slotIndex += 1) {
+    if (aligned[slotIndex] === '') {
+      remainingSlots.push(slotIndex);
+    }
+  }
+
+  const extras = [];
+  deferred.forEach((char, index) => {
+    const slotIndex = remainingSlots[index];
+    if (slotIndex == null) {
+      extras.push(char);
+      return;
+    }
+    aligned[slotIndex] = char;
+  });
+
+  return { aligned, extras };
+}
+
+function alignCandidateCharsToReferenceSlots(referenceChars, candidateChars) {
+  const aligned = Array(referenceChars.length).fill('');
+  if (!referenceChars.length) {
     return {
       aligned,
       extras: candidateChars.slice()
@@ -6055,20 +6162,24 @@ function alignCandidateCharsToOriginalSlots(originalChars, candidateChars) {
 
   // Treat equal-length punctuation runs as direct replacements instead of
   // splitting them into "delete original" + "insert new" slots.
-  if (candidateChars.length === originalChars.length) {
+  if (candidateChars.length === referenceChars.length) {
     return {
       aligned: candidateChars.slice(),
       extras: []
     };
   }
 
-  const matrix = buildLcsMatrix(originalChars, candidateChars);
+  if (candidateChars.length < referenceChars.length && supportsFunctionAlignedReferenceChars(referenceChars)) {
+    return alignCandidateCharsToReferenceRoles(referenceChars, candidateChars);
+  }
+
+  const matrix = buildLcsMatrix(referenceChars, candidateChars);
   const matchedCandidateIndexes = new Set();
-  let originalIndex = originalChars.length;
+  let originalIndex = referenceChars.length;
   let candidateIndex = candidateChars.length;
 
   while (originalIndex > 0 && candidateIndex > 0) {
-    if (originalChars[originalIndex - 1] === candidateChars[candidateIndex - 1]) {
+    if (referenceChars[originalIndex - 1] === candidateChars[candidateIndex - 1]) {
       aligned[originalIndex - 1] = candidateChars[candidateIndex - 1];
       matchedCandidateIndexes.add(candidateIndex - 1);
       originalIndex -= 1;
@@ -6083,58 +6194,88 @@ function alignCandidateCharsToOriginalSlots(originalChars, candidateChars) {
     }
   }
 
-  const extras = [];
+  // Classify extras as before-aligned or after-aligned based on their position
+  // relative to the first LCS match. Extras that appear before the first matched
+  // candidate index (e.g. lone '、' before matched '，') will occupy display slots
+  // that precede the aligned slots in the inline view.
+  const hasAnyMatch = matchedCandidateIndexes.size > 0;
+  const firstMatchedCandidateIndex = hasAnyMatch
+    ? Math.min(...matchedCandidateIndexes)
+    : Infinity;
+  const extrasBefore = [];
+  const extrasAfterRaw = [];
   candidateChars.forEach((char, index) => {
     if (!matchedCandidateIndexes.has(index)) {
-      extras.push(char);
+      if (hasAnyMatch && index < firstMatchedCandidateIndex) {
+        extrasBefore.push(char);
+      } else {
+        extrasAfterRaw.push(char);
+      }
     }
   });
 
-  // When LCS finds no match for an original slot, promote the first available extra
-  // into that slot so that "original=，, candidate=：「" yields aligned=['：'], extras=['「']
-  // rather than aligned=[''], extras=['：','「'] which would create a spurious third slot.
-  for (let i = 0; i < aligned.length && extras.length > 0; i += 1) {
+  // When LCS finds no match for an original slot, promote the first available
+  // after-extra into that slot so that "original=，, candidate=：「" yields
+  // aligned=['：'], extrasAfter=['「'] rather than aligned=[''], extrasAfter=['：','「']
+  // which would create a spurious third slot.
+  const extrasAfter = extrasAfterRaw.slice();
+  for (let i = 0; i < aligned.length && extrasAfter.length > 0; i += 1) {
     if (aligned[i] === '') {
-      aligned[i] = extras.shift();
+      aligned[i] = extrasAfter.shift();
     }
   }
 
-  return { aligned, extras };
+  const extras = [...extrasBefore, ...extrasAfter];
+  return { aligned, extras, extrasBefore, extrasAfter };
 }
 
 function createBoundarySlots(basePosition, originalChars, candidates) {
+  const referenceChars = originalChars.length
+    ? originalChars.slice()
+    : selectFunctionAlignedReferenceChars(candidates, basePosition);
   const candidateAlignments = candidates.map(candidate => {
     const candidateChars = (candidate.charMap.get(basePosition) || []).slice();
-    if (!originalChars.length) {
+    if (!referenceChars.length) {
       return {
         model: candidate.model,
         aligned: [],
-        extras: candidateChars
+        extras: candidateChars,
+        extrasBefore: [],
+        extrasAfter: candidateChars
       };
     }
     return {
       model: candidate.model,
-      ...alignCandidateCharsToOriginalSlots(originalChars, candidateChars)
+      ...alignCandidateCharsToReferenceSlots(referenceChars, candidateChars)
     };
   });
 
   const slots = [];
-  const originalSlotCount = originalChars.length;
-  const extraSlotCount = Math.max(0, ...candidateAlignments.map(alignment => alignment.extras.length));
-  const totalSlotCount = originalSlotCount > 0 ? originalSlotCount + extraSlotCount : extraSlotCount;
+  const referenceSlotCount = referenceChars.length;
+  const extrasBeforeSlotCount = Math.max(0, ...candidateAlignments.map(alignment => (alignment.extrasBefore || []).length));
+  const extrasAfterSlotCount = Math.max(0, ...candidateAlignments.map(alignment => (alignment.extrasAfter || alignment.extras || []).length));
+  const totalSlotCount = extrasBeforeSlotCount + referenceSlotCount + extrasAfterSlotCount;
 
   for (let slotIndex = 0; slotIndex < totalSlotCount; slotIndex += 1) {
     const values = new Map();
     candidateAlignments.forEach(alignment => {
-      const value = originalSlotCount > 0
-        ? (slotIndex < originalSlotCount
-          ? (alignment.aligned[slotIndex] || '')
-          : (alignment.extras[slotIndex - originalSlotCount] || ''))
-        : (alignment.extras[slotIndex] || '');
+      let value;
+      if (slotIndex < extrasBeforeSlotCount) {
+        value = (alignment.extrasBefore || [])[slotIndex] || '';
+      } else if (slotIndex < extrasBeforeSlotCount + referenceSlotCount) {
+        const alignedIndex = slotIndex - extrasBeforeSlotCount;
+        value = alignment.aligned[alignedIndex] || '';
+      } else {
+        const afterIndex = slotIndex - extrasBeforeSlotCount - referenceSlotCount;
+        value = (alignment.extrasAfter || alignment.extras || [])[afterIndex] || '';
+      }
       values.set(alignment.model, value);
     });
 
-    const originalValue = slotIndex < originalSlotCount ? originalChars[slotIndex] : '';
+    const alignedSlotIndex = slotIndex - extrasBeforeSlotCount;
+    const originalValue = alignedSlotIndex >= 0 && alignedSlotIndex < originalChars.length
+      ? originalChars[alignedSlotIndex]
+      : '';
     const hasCandidateValue = [...values.values()].some(value => value !== '');
     if (!hasCandidateValue && originalValue === '') {
       continue;
@@ -6236,6 +6377,446 @@ function resolvedPunctuationForEntry(entry) {
     }
   }
   return '';
+}
+
+function formatBoundaryGroupKey(basePosition) {
+  return `group:${Number(basePosition)}`;
+}
+
+function isBoundaryGroupKey(key) {
+  return String(key || '').startsWith('group:');
+}
+
+function parseBoundaryGroupKey(key) {
+  if (!isBoundaryGroupKey(key)) {
+    return null;
+  }
+  const basePosition = Number(String(key).slice(6));
+  if (Number.isNaN(basePosition)) {
+    return null;
+  }
+  return {
+    key: formatBoundaryGroupKey(basePosition),
+    basePosition
+  };
+}
+
+function punctuationFunctionCategoryForChar(char) {
+  const value = String(char || '');
+  if (!value) {
+    return 'other';
+  }
+  if (ANNOTATION_PUNCTUATION_SET.has(value)) {
+    return 'annotation';
+  }
+  if (SEPARATOR_PUNCTUATION_SET.has(value)) {
+    return 'separator';
+  }
+  return 'other';
+}
+
+function summarizePunctuationFunctionCategory(value) {
+  const str = String(value || '');
+  if (!str) {
+    return 'other';
+  }
+  // Fast path: single character (most common case — avoids Set allocation)
+  if (str.length === 1) {
+    return punctuationFunctionCategoryForChar(str);
+  }
+  const categories = new Set();
+  for (const char of str) {
+    if (char) {
+      categories.add(punctuationFunctionCategoryForChar(char));
+    }
+  }
+  categories.delete('other');
+  if (categories.size === 0) {
+    return 'other';
+  }
+  if (categories.size === 1) {
+    return categories.values().next().value;
+  }
+  return 'mixed';
+}
+
+function boundaryGroupFunctionLabel(functionCategory) {
+  if (functionCategory === 'separator') {
+    return '分隔群組';
+  }
+  if (functionCategory === 'annotation') {
+    return '註記群組';
+  }
+  if (functionCategory === 'mixed') {
+    return '分隔/註記群組';
+  }
+  return '標點群組';
+}
+
+function summarizeBoundaryGroupFunctionCategory(values) {
+  const categories = new Set();
+  (Array.isArray(values) ? values : []).forEach(value => {
+    const category = summarizePunctuationFunctionCategory(value);
+    if (category !== 'other') {
+      categories.add(category);
+    }
+  });
+  if (categories.size === 0) {
+    return 'other';
+  }
+  if (categories.has('mixed') || categories.size > 1) {
+    return 'mixed';
+  }
+  return [...categories][0];
+}
+
+function entryValueForModel(entry, model) {
+  if (!entry || !entry.chars || !model) {
+    return '';
+  }
+  const chars = entry.chars.get(model) || [];
+  if (Array.isArray(chars)) {
+    return chars.join('');
+  }
+  return String(chars || '');
+}
+
+function currentDisplayValueForEntry(entry) {
+  if (!entry) {
+    return '';
+  }
+  if (entry.category === 'identical') {
+    return entry.dominantValue || '';
+  }
+  if (Object.prototype.hasOwnProperty.call(entry, 'resolvedValue') && entry.resolvedValue != null) {
+    return entry.resolvedValue;
+  }
+  if (entry.selectedModel && entry.selectedModel !== 'custom' && entry.selectedModel !== 'none') {
+    return entryValueForModel(entry, entry.selectedModel);
+  }
+  if (entry.category === 'conflict') {
+    for (const chars of entry.chars.values()) {
+      if (Array.isArray(chars)) {
+        return chars.join('');
+      }
+      return String(chars || '');
+    }
+  }
+  return entry.dominantValue || '';
+}
+
+function normalizeComparisonCollectionEntries(collection) {
+  if (collection instanceof Map) {
+    return Array.from(collection.entries());
+  }
+  if (collection instanceof Set) {
+    return Array.from(collection.values()).map(value => [String(value), value]);
+  }
+  if (Array.isArray(collection)) {
+    return collection.map((value, index) => (
+      Array.isArray(value) && value.length >= 2
+        ? [value[0], value[1]]
+        : [String(value?.key ?? index), value]
+    ));
+  }
+  if (collection && typeof collection === 'object') {
+    return Object.entries(collection);
+  }
+  return [];
+}
+
+function parseComparisonPositionKey(key) {
+  const normalizedKey = String(key ?? '');
+  const parts = normalizedKey.split(':');
+  if (parts.length === 2) {
+    const basePosition = Number(parts[0]);
+    const slotIndex = Number(parts[1]);
+    if (!Number.isNaN(basePosition) && !Number.isNaN(slotIndex)) {
+      return {
+        key: formatComparisonPositionKey(basePosition, slotIndex),
+        basePosition,
+        slotIndex
+      };
+    }
+  }
+  const basePosition = Number(normalizedKey);
+  if (!Number.isNaN(basePosition)) {
+    return {
+      key: formatComparisonPositionKey(basePosition, 0),
+      basePosition,
+      slotIndex: 0
+    };
+  }
+  return null;
+}
+
+function normalizeComparisonCountUnit(positionKey, entry, fallbackCategory) {
+  const entryKey = entry && typeof entry === 'object' && entry.key != null
+    ? String(entry.key)
+    : String(positionKey ?? '');
+  const parsed = parseComparisonPositionKey(entryKey) || parseComparisonPositionKey(positionKey);
+  if (entry && typeof entry === 'object') {
+    const basePosition = Number(entry.basePosition ?? entry.position ?? parsed?.basePosition ?? 0);
+    const slotIndex = Number(entry.slotIndex ?? parsed?.slotIndex ?? 0);
+    return {
+      ...entry,
+      key: entryKey || parsed?.key || formatComparisonPositionKey(basePosition, slotIndex),
+      category: entry.category || fallbackCategory,
+      position: Number(entry.position ?? basePosition),
+      basePosition,
+      slotIndex,
+      resolved: entry.resolved === true,
+      displayOrder: entry.displayOrder ?? calculateComparisonDisplayOrder(basePosition, slotIndex)
+    };
+  }
+  if (!parsed) {
+    return null;
+  }
+  return {
+    key: parsed.key,
+    category: fallbackCategory,
+    position: parsed.basePosition,
+    basePosition: parsed.basePosition,
+    slotIndex: parsed.slotIndex,
+    resolved: false,
+    displayOrder: calculateComparisonDisplayOrder(parsed.basePosition, parsed.slotIndex)
+  };
+}
+
+function collectComparisonEntries(positionDiff) {
+  if (!positionDiff) {
+    return [];
+  }
+  return [
+    ...normalizeCollectionValues(positionDiff.identicalPositions),
+    ...normalizeCollectionValues(positionDiff.majorityPositions),
+    ...normalizeCollectionValues(positionDiff.conflictPositions)
+  ].sort((left, right) => (
+    Number(left?.basePosition ?? left?.position ?? 0) - Number(right?.basePosition ?? right?.position ?? 0)
+    || Number(left?.slotIndex ?? 0) - Number(right?.slotIndex ?? 0)
+  ));
+}
+
+function buildBoundaryGroupModelValues(entries) {
+  const modelOrder = [];
+  const seenModels = new Set();
+  (entries || []).forEach(entry => {
+    (entry?.chars instanceof Map ? [...entry.chars.keys()] : []).forEach(model => {
+      if (!seenModels.has(model)) {
+        seenModels.add(model);
+        modelOrder.push(model);
+      }
+    });
+  });
+  return new Map(modelOrder.map(model => [model, (entries || []).map(entry => entryValueForModel(entry, model)).join('')]));
+}
+
+function shouldGroupBoundaryEntries(entries) {
+  const boundaryEntries = Array.isArray(entries) ? entries.filter(Boolean) : [];
+  if (boundaryEntries.length <= 1) {
+    return false;
+  }
+  if (!boundaryEntries.some(entry => entry.category !== 'identical')) {
+    return false;
+  }
+  // Do not group slots that serve different punctuation functions.
+  // Annotation chars (」「) and separator chars (、，) must remain individually
+  // resolvable; collapsing them into one boundary-group entry hides per-slot
+  // choices and creates artificial conflict classifications.
+  const nonIdenticalEntries = boundaryEntries.filter(entry => entry.category !== 'identical');
+  const functionCategories = new Set();
+  nonIdenticalEntries.forEach(entry => {
+    const chars = entry?.chars;
+    if (!(chars instanceof Map)) return;
+    chars.forEach(value => {
+      const str = Array.isArray(value) ? value.join('') : String(value || '');
+      if (str) {
+        const cat = summarizePunctuationFunctionCategory(str);
+        if (cat !== 'other') functionCategories.add(cat);
+      }
+    });
+  });
+  if (functionCategories.size > 1) {
+    return false;
+  }
+  // Group only when a genuine multi-character value appears within a single slot
+  // (e.g. '……') rather than checking concatenated cross-slot values which would
+  // falsely treat three separate single-char slots as one multi-char entity.
+  return boundaryEntries.some(entry => {
+    if (String(entry.originalValue || '').length > 1) {
+      return true;
+    }
+    const chars = entry?.chars;
+    if (!(chars instanceof Map)) return false;
+    for (const value of chars.values()) {
+      const str = Array.isArray(value) ? value.join('') : String(value || '');
+      if (str.length > 1) return true;
+    }
+    return false;
+  });
+}
+
+// Module-level single-entry cache: eliminated duplicate buildBoundaryGroupEntries
+// calls within one synchronous render cycle (getComparisonDisplayUnits +
+// getComparisonCountUnits both call this for the same positionDiff).
+// Invalidated by ResolvePosition after each user-driven mutation.
+let _bgCacheKey = null;
+let _bgCacheVal = null;
+
+function buildBoundaryGroupEntries(positionDiff) {
+  if (positionDiff !== null && positionDiff === _bgCacheKey) {
+    return _bgCacheVal;
+  }
+  const grouped = new Map();
+  const byBoundary = new Map();
+  collectComparisonEntries(positionDiff).forEach(entry => {
+    const basePosition = Number(entry?.basePosition ?? entry?.position ?? 0);
+    if (!byBoundary.has(basePosition)) {
+      byBoundary.set(basePosition, []);
+    }
+    byBoundary.get(basePosition).push(entry);
+  });
+
+  byBoundary.forEach((entries, basePosition) => {
+    if (!shouldGroupBoundaryEntries(entries)) {
+      return;
+    }
+    const values = buildBoundaryGroupModelValues(entries);
+    const originalValue = entries.map(entry => String(entry.originalValue || '')).join('');
+    const { category, dominantValue, dominantCount } = classifyBoundaryValues(values, originalValue);
+    if (category === 'identical') {
+      return;
+    }
+    const actionableEntries = entries.filter(entry => entry.category !== 'identical');
+    const currentValue = entries.map(entry => currentDisplayValueForEntry(entry)).join('');
+    const resolved = actionableEntries.every(entry => entry.resolved === true);
+    const selectedModels = [...new Set(actionableEntries.map(entry => entry.selectedModel).filter(model => model != null))];
+    const functionCategory = summarizeBoundaryGroupFunctionCategory([
+      ...values.values(),
+      originalValue,
+      currentValue
+    ]);
+    grouped.set(formatBoundaryGroupKey(basePosition), {
+      key: formatBoundaryGroupKey(basePosition),
+      kind: 'boundary-group',
+      position: basePosition,
+      basePosition,
+      slotIndex: 0,
+      entryKeys: entries.map(entry => entry.key),
+      entries,
+      category,
+      voteCount: dominantCount,
+      chars: new Map([...values.entries()].map(([model, value]) => [model, [value]])),
+      dominantValue,
+      originalValue,
+      differsFromOriginal: dominantValue !== originalValue,
+      included: currentValue !== '',
+      resolved,
+      autoResolved: false,
+      userResolved: actionableEntries.some(entry => entry.userResolved),
+      selectedModel: selectedModels.length === 1 ? selectedModels[0] : null,
+      resolvedValue: resolved ? currentValue : null,
+      functionCategory,
+      displayOrder: Math.min(...entries.map(entry => Number(entry.displayOrder ?? calculateComparisonDisplayOrder(basePosition, entry.slotIndex || 0))))
+    });
+  });
+
+  _bgCacheKey = positionDiff;
+  _bgCacheVal = grouped;
+  return grouped;
+}
+
+function getComparisonDisplayUnits(positionDiff) {
+  const groups = buildBoundaryGroupEntries(positionDiff);
+  const groupedBoundaries = new Set([...groups.values()].map(group => Number(group.basePosition)));
+  const units = collectComparisonEntries(positionDiff)
+    .filter(entry => !groupedBoundaries.has(Number(entry?.basePosition ?? entry?.position ?? 0)));
+  groups.forEach(group => units.push(group));
+  units.sort((left, right) => compareEventBaseThenDisplayOrder(left, right));
+  return units;
+}
+
+function getComparisonCountUnits(positionDiff) {
+  if (!positionDiff) {
+    return [];
+  }
+  const groups = buildBoundaryGroupEntries(positionDiff);
+  const groupedEntryKeys = new Set();
+  groups.forEach(group => {
+    (Array.isArray(group?.entries) ? group.entries : []).forEach(entry => {
+      if (entry && typeof entry === 'object' && entry.key != null) {
+        groupedEntryKeys.add(String(entry.key));
+      }
+    });
+  });
+
+  const units = [];
+  [
+    ['identical', positionDiff.identicalPositions],
+    ['majority', positionDiff.majorityPositions],
+    ['conflict', positionDiff.conflictPositions]
+  ].forEach(([fallbackCategory, collection]) => {
+    normalizeComparisonCollectionEntries(collection).forEach(([positionKey, entry]) => {
+      const unit = normalizeComparisonCountUnit(positionKey, entry, fallbackCategory);
+      if (!unit || groupedEntryKeys.has(String(unit.key))) {
+        return;
+      }
+      units.push(unit);
+    });
+  });
+
+  groups.forEach(group => units.push(group));
+  units.sort((left, right) => compareEventBaseThenDisplayOrder(left, right));
+  return units;
+}
+
+function classifyPositionDiffComparisonCategory(positionDiff) {
+  const comparisonUnits = getComparisonCountUnits(positionDiff)
+    .filter(entry => entry && typeof entry === 'object');
+  if (comparisonUnits.some(entry => entry.category === 'conflict')) {
+    return 'conflict';
+  }
+  if (comparisonUnits.some(entry => entry.category === 'majority')) {
+    return 'majority';
+  }
+  return 'identical';
+}
+
+function positionDiffHasConflictUnits(positionDiff) {
+  return classifyPositionDiffComparisonCategory(positionDiff) === 'conflict';
+}
+
+function resolveBoundaryGroupPosition(positionDiff, positionKey, include, char = undefined, selectedModel = null) {
+  const group = buildBoundaryGroupEntries(positionDiff).get(String(positionKey));
+  if (!group) {
+    return false;
+  }
+  const actionableEntries = group.entries.filter(entry => entry.category !== 'identical');
+  if (!actionableEntries.length) {
+    return false;
+  }
+  const applyResolution = (entry, value, model) => {
+    entry.included = value !== '';
+    entry.resolved = true;
+    entry.userResolved = true;
+    entry.resolvedValue = value;
+    entry.selectedModel = model;
+  };
+  if (selectedModel && selectedModel !== 'custom' && selectedModel !== 'none') {
+    actionableEntries.forEach(entry => applyResolution(entry, entryValueForModel(entry, selectedModel), selectedModel));
+    return true;
+  }
+  if (selectedModel === 'none' || include === false) {
+    actionableEntries.forEach(entry => applyResolution(entry, '', 'none'));
+    return true;
+  }
+  if (selectedModel === 'custom') {
+    const customValue = String(char || '');
+    actionableEntries.forEach((entry, index) => applyResolution(entry, index === 0 ? customValue : '', 'custom'));
+    return true;
+  }
+  actionableEntries.forEach(entry => applyResolution(entry, include ? currentDisplayValueForEntry(entry) : '', selectedModel));
+  return true;
 }
 
 function buildTextDiffMap(candidates, strippedText) {
@@ -7027,6 +7608,9 @@ function getPositionEntry(positionDiff, positionKey) {
     return null;
   }
   const normalizedKey = String(positionKey);
+  if (isBoundaryGroupKey(normalizedKey)) {
+    return buildBoundaryGroupEntries(positionDiff).get(normalizedKey) || null;
+  }
   const exact = positionDiff.identicalPositions.get(normalizedKey)
     || positionDiff.majorityPositions.get(normalizedKey)
     || positionDiff.conflictPositions.get(normalizedKey);
@@ -7050,11 +7634,7 @@ function getPositionEntry(positionDiff, positionKey) {
 function listDisplayEvents(positionDiff, fractionalInsertions) {
   const events = [];
   if (positionDiff) {
-    [
-      ...positionDiff.identicalPositions.values(),
-      ...positionDiff.majorityPositions.values(),
-      ...positionDiff.conflictPositions.values()
-    ].forEach(entry => {
+    getComparisonDisplayUnits(positionDiff).forEach(entry => {
       const displayChar = preferredPunctuationForEntry(entry);
       const shouldRender = !entry.resolved
         || entry.included
@@ -7691,6 +8271,17 @@ function collectPunctuatedSlotKwic(display, boundary, slotKey, focus) {
     before: collectContextBefore(chars, display?.boundaryStart?.[boundary] ?? 0),
     focus,
     after: collectContextAfter(chars, display?.afterBoundary?.[boundary] ?? 0)
+  };
+}
+
+function collectPunctuatedBoundaryGroupKwic(display, boundary, focus) {
+  const chars = Array.isArray(display?.chars) ? display.chars : [];
+  const beforeBoundary = display?.boundaryStart?.[boundary] ?? 0;
+  const afterBoundary = display?.afterBoundary?.[boundary] ?? beforeBoundary;
+  return {
+    before: collectContextBefore(chars, beforeBoundary),
+    focus,
+    after: collectContextAfter(chars, afterBoundary)
   };
 }
 
@@ -8844,6 +9435,86 @@ const adjudicationTestSuites = [
     }
   },
   {
+    name: 'T009b2-T-UNIT buildPositionDiff maps lone separators into the semantic middle slot of extra-only annotation runs',
+    fn(assert) {
+      const stripped = '甲乙';
+      const original = '甲乙';
+      const makeCandidate = (model, text) => {
+        const walked = collectCandidateWalk(text, stripped, '、「」');
+        return {
+          model,
+          repunctuatedText: text,
+          stripPunctuationChars: '、「」',
+          positions: walked.positions,
+          charMap: walked.charsByPosition
+        };
+      };
+
+      const diff = buildPositionDiff([
+        makeCandidate('claude', '甲、乙'),
+        makeCandidate('gemini', '甲」、「乙'),
+        makeCandidate('gpt', '甲乙')
+      ], stripped, original, '、「」');
+
+      const allComparison = [
+        ...diff.majorityPositions.values(),
+        ...diff.conflictPositions.values()
+      ].sort((a, b) => a.displayOrder - b.displayOrder);
+
+      assert.equal(allComparison.length, 3, 'the mixed annotation/separator boundary expands into three semantic slots');
+      assert.equal(allComparison[0].chars.get('claude').join(''), '', 'lone separator does not occupy the closing-annotation slot');
+      assert.equal(allComparison[1].chars.get('claude').join(''), '、', 'lone separator aligns to the separator slot');
+      assert.equal(allComparison[2].chars.get('claude').join(''), '', 'lone separator does not occupy the opening-annotation slot');
+      assert.equal(allComparison[0].chars.get('gemini').join(''), '」', 'closing annotation stays on the first semantic slot');
+      assert.equal(allComparison[1].chars.get('gemini').join(''), '、', 'separator stays on the middle semantic slot');
+      assert.equal(allComparison[2].chars.get('gemini').join(''), '「', 'opening annotation stays on the last semantic slot');
+    }
+  },
+  {
+    name: 'T009b3-T-UNIT buildPositionDiff places lone pre-separator before the shared terminal separator',
+    fn(assert) {
+      // Regression: when one candidate has ['、','，'] where others have ['，'],
+      // the lone '、' appears BEFORE '，' in that candidate's text. The fix must
+      // assign a lower slotIndex (and therefore lower displayOrder) to the '、'
+      // slot than to the '，' slot, so the inline view renders ∅、∅ BEFORE '，'
+      // (i.e. the slot order is: extrasBeforeSlot[∅/、/∅] then aligned[，/，/，]).
+      const stripped = '甲乙';
+      const original = '甲，乙';
+      const makeCandidate = (model, text) => {
+        const walked = collectCandidateWalk(text, stripped, '，、');
+        return {
+          model,
+          repunctuatedText: text,
+          stripPunctuationChars: '，、',
+          positions: walked.positions,
+          charMap: walked.charsByPosition
+        };
+      };
+
+      const diff = buildPositionDiff([
+        makeCandidate('claude', '甲，乙'),
+        makeCandidate('gemini', '甲、，乙'),
+        makeCandidate('gpt', '甲，乙')
+      ], stripped, original, '，、');
+
+      const allComparison = [
+        ...diff.identicalPositions.values(),
+        ...diff.majorityPositions.values(),
+        ...diff.conflictPositions.values()
+      ].sort((a, b) => a.displayOrder - b.displayOrder);
+
+      assert.equal(allComparison.length, 2, 'exactly two slots: one for the lone 、 and one for the shared ，');
+      assert.equal(allComparison[0].displayOrder < allComparison[1].displayOrder, true, 'lone-、 slot has strictly lower displayOrder than the shared-，slot');
+      assert.equal(allComparison[0].chars.get('gemini').join(''), '、', 'gemini contributes 、 to the first (before) slot');
+      assert.equal(allComparison[0].chars.get('claude').join(''), '', 'claude has no char in the first (before) slot');
+      assert.equal(allComparison[0].chars.get('gpt').join(''), '', 'gpt has no char in the first (before) slot');
+      assert.equal(allComparison[1].category, 'identical', 'second slot is identical ，');
+      assert.equal(allComparison[1].chars.get('claude').join(''), '，', 'claude contributes ，to the second slot');
+      assert.equal(allComparison[1].chars.get('gemini').join(''), '，', 'gemini contributes ，to the second slot');
+      assert.equal(allComparison[1].chars.get('gpt').join(''), '，', 'gpt contributes ，to the second slot');
+    }
+  },
+  {
     name: 'T009c-T-UNIT buildTextDiffMap',
     fn(assert) {
       const candidates = [
@@ -9345,6 +10016,93 @@ const adjudicationTestSuites = [
       assert.equal(html.indexOf('data-text-diff-key="boundary:1:0"') < html.indexOf('data-fractional-key="1.0"'), true, 'boundary text insertion diff stays distinct from later manual insertions at the same boundary');
       assert.equal(html.indexOf('data-text-diff-key="boundary:1:0"') < html.indexOf('data-base-offset="2"'), true, 'boundary text insertion diff renders before the anchored base character');
       assert.equal(html.includes('>∅<'), true, 'majority-omitted boundary text insertion diff renders the visible ∅ marker');
+    }
+  },
+  {
+    name: 'T117-T-BDD mixed-function annotation and separator slots render as separate individual inline markers',
+    fn(assert) {
+      const app = adjApp();
+      const segment = {
+        id: 'seg-001',
+        stripped_text: '甲乙',
+        original_text: '甲乙',
+        inline_elements: [],
+        textDiffs: new Map()
+      };
+      const diff = createEmptyPositionDiff();
+      diff.conflictPositions.set('1:0', {
+        key: '1:0',
+        position: 1,
+        basePosition: 1,
+        slotIndex: 0,
+        category: 'conflict',
+        voteCount: 1,
+        chars: new Map([['claude', ['、']], ['gemini', ['」']], ['gpt', []]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: false,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        selectedModel: null,
+        resolvedValue: null,
+        displayOrder: calculateComparisonDisplayOrder(1, 0)
+      });
+      diff.majorityPositions.set('1:1', {
+        key: '1:1',
+        position: 1,
+        basePosition: 1,
+        slotIndex: 1,
+        category: 'majority',
+        voteCount: 2,
+        chars: new Map([['claude', []], ['gemini', ['、']], ['gpt', []]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: false,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        selectedModel: null,
+        resolvedValue: null,
+        displayOrder: calculateComparisonDisplayOrder(1, 1)
+      });
+      diff.majorityPositions.set('1:2', {
+        key: '1:2',
+        position: 1,
+        basePosition: 1,
+        slotIndex: 2,
+        category: 'majority',
+        voteCount: 2,
+        chars: new Map([['claude', []], ['gemini', ['「']], ['gpt', []]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: false,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        selectedModel: null,
+        resolvedValue: null,
+        displayOrder: calculateComparisonDisplayOrder(1, 2)
+      });
+
+      app.job = {
+        candidatesBySegment: {
+          'seg-001': [{ model: 'claude' }, { model: 'gemini' }, { model: 'gpt' }]
+        }
+      };
+      app.segments = [segment];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': diff };
+      app.positionMaps = { 'seg-001': clonePositionDiff(diff) };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      const html = app.renderCurrentInlineViewHtml();
+      assert.equal(html.includes('data-position-key="group:1"'), false, 'mixed-function slots do not collapse into a boundary group marker');
+      assert.equal((html.match(/data-position-key="1:/g) || []).length, 3, 'three individual slot markers are each visible in the inline editor');
     }
   },
   {
@@ -10483,6 +11241,53 @@ const adjudicationTestSuites = [
     }
   },
   {
+    name: 'T016e-T-UNIT mixed-function extra-only slots at same boundary show as separate majority markers not a conflict group',
+    fn(assert) {
+      const stripped = '甲乙';
+      const original = '甲乙';
+      const makeCandidate = (model, text) => {
+        const walked = collectCandidateWalk(text, stripped, '、「」');
+        return {
+          model,
+          repunctuatedText: text,
+          stripPunctuationChars: '、「」',
+          positions: walked.positions,
+          charMap: walked.charsByPosition
+        };
+      };
+      const candidates = [
+        makeCandidate('claude', '甲、乙'),
+        makeCandidate('gemini', '甲」、「乙'),
+        makeCandidate('gpt', '甲乙')
+      ];
+      const diff = buildPositionDiff(candidates, stripped, original, '、「」');
+
+      const app = adjApp();
+      app.job = {
+        candidatesBySegment: {
+          'seg-001': candidates.map(candidate => ({ model: candidate.model }))
+        }
+      };
+      app.segments = [
+        { id: 'seg-001', stripped_text: stripped, original_text: original, inline_elements: [], textDiffs: new Map() }
+      ];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': diff };
+      app.positionMaps = { 'seg-001': clonePositionDiff(diff) };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      assert.equal(diff.conflictPositions.size, 0, 'slot-level semantic alignment removes the manufactured raw conflict slot');
+      assert.equal(app.segmentCategory('seg-001'), 'majority', 'annotation and separator slots at the same boundary are individually majority, not an artificial conflict group');
+      assert.deepEqual(
+        app.currentSegmentStats(),
+        { identical: 0, majority: 3, conflict: 0, resolved: 0, inserted: 0 },
+        'three individual majority slots are counted instead of one conflict boundary group'
+      );
+      assert.deepEqual(app.pendingSegments().map(segment => segment.id), [], 'majority-only segments are not pending review');
+    }
+  },
+  {
     name: 'T094aa-T-UNIT progressStats exposes preview5-style resolved conflict counts',
     fn(assert) {
       const app = adjApp();
@@ -10863,6 +11668,104 @@ const adjudicationTestSuites = [
     }
   },
   {
+    name: 'T119-T-UNIT mixed-function annotation and separator slots at same boundary remain individual markers',
+    fn(assert) {
+      const app = adjApp();
+      const segment = {
+        id: 'seg-001',
+        stripped_text: '甲乙',
+        original_text: '甲乙',
+        inline_elements: [],
+        textDiffs: new Map()
+      };
+      const diff = createEmptyPositionDiff();
+      diff.conflictPositions.set('1:0', {
+        key: '1:0',
+        position: 1,
+        basePosition: 1,
+        slotIndex: 0,
+        category: 'conflict',
+        voteCount: 1,
+        chars: new Map([['claude', ['、']], ['gemini', ['」']], ['gpt', []]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: false,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        selectedModel: null,
+        resolvedValue: null,
+        displayOrder: calculateComparisonDisplayOrder(1, 0)
+      });
+      diff.majorityPositions.set('1:1', {
+        key: '1:1',
+        position: 1,
+        basePosition: 1,
+        slotIndex: 1,
+        category: 'majority',
+        voteCount: 2,
+        chars: new Map([['claude', []], ['gemini', ['、']], ['gpt', []]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: false,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        selectedModel: null,
+        resolvedValue: null,
+        displayOrder: calculateComparisonDisplayOrder(1, 1)
+      });
+      diff.majorityPositions.set('1:2', {
+        key: '1:2',
+        position: 1,
+        basePosition: 1,
+        slotIndex: 2,
+        category: 'majority',
+        voteCount: 2,
+        chars: new Map([['claude', []], ['gemini', ['「']], ['gpt', []]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: false,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        selectedModel: null,
+        resolvedValue: null,
+        displayOrder: calculateComparisonDisplayOrder(1, 2)
+      });
+
+      app.job = {
+        stripPunctuationChars: '，。、「」',
+        candidatesBySegment: {
+          'seg-001': [{ model: 'claude' }, { model: 'gemini' }, { model: 'gpt' }]
+        }
+      };
+      app.segments = [segment];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': diff };
+      app.positionMaps = { 'seg-001': clonePositionDiff(diff) };
+      // Annotation (」「) and separator (、) slots at the same boundary must not collapse into a boundary group
+      assert.equal(buildBoundaryGroupEntries(clonePositionDiff(diff)).has('group:1'), false,
+        'annotation and separator slots at the same boundary do not form a boundary group');
+      // All three slots remain as individual display units
+      const units = getComparisonDisplayUnits(clonePositionDiff(diff));
+      const pos1Units = units.filter(u => Number(u.basePosition ?? u.position) === 1);
+      assert.equal(pos1Units.length, 3, 'three individual slot markers render instead of one combined group marker');
+      // The conflict slot popup shows per-slot per-model choices, not combined boundary strings
+      app.openPositionPopup('1:0', { getBoundingClientRect: () => ({ left: 10, right: 40, bottom: 20, top: 5 }) });
+      const choices = app.popupVoteChoices();
+      assert.deepEqual(
+        choices.map(choice => choice.value).sort(),
+        ['∅', '、', '」'].sort(),
+        'conflict slot popup shows per-slot per-model choices not combined boundary strings'
+      );
+    }
+  },
+  {
     name: 'T026j-T-UNIT floatingMenuPosition prefers side placement before shrinking a full-size popup',
     fn(assert) {
       const app = adjApp();
@@ -10882,6 +11785,102 @@ const adjudicationTestSuites = [
       assert.equal(coords.y >= 12, true, 'side placement keeps the popup inside the viewport top margin');
       assert.equal(coords.y + popupHeight <= window.innerHeight - 12, true, 'side placement keeps the popup fully visible vertically');
       assert.equal(coords.maxHeight, 0, 'side placement does not introduce an internal max-height clamp');
+    }
+  },
+  {
+    name: 'T120-T-UNIT mixed-function boundary does not form group; resolveBoundaryGroupPosition returns false gracefully',
+    fn(assert) {
+      const createGroupedDiff = () => {
+        const diff = createEmptyPositionDiff();
+        diff.identicalPositions.set('1:0', {
+          key: '1:0',
+          position: 1,
+          basePosition: 1,
+          slotIndex: 0,
+          category: 'identical',
+          voteCount: 3,
+          chars: new Map([['claude', ['。']], ['gemini', ['。']], ['gpt', ['。']]]),
+          dominantValue: '。',
+          originalValue: '。',
+          differsFromOriginal: false,
+          included: true,
+          resolved: true,
+          autoResolved: true,
+          userResolved: false,
+          selectedModel: null,
+          resolvedValue: '。',
+          displayOrder: calculateComparisonDisplayOrder(1, 0)
+        });
+        diff.conflictPositions.set('1:1', {
+          key: '1:1',
+          position: 1,
+          basePosition: 1,
+          slotIndex: 1,
+          category: 'conflict',
+          voteCount: 1,
+          chars: new Map([['claude', ['、']], ['gemini', ['」']], ['gpt', []]]),
+          dominantValue: '',
+          originalValue: '',
+          differsFromOriginal: false,
+          included: false,
+          resolved: false,
+          autoResolved: false,
+          userResolved: false,
+          selectedModel: null,
+          resolvedValue: null,
+          displayOrder: calculateComparisonDisplayOrder(1, 1)
+        });
+        diff.majorityPositions.set('1:2', {
+          key: '1:2',
+          position: 1,
+          basePosition: 1,
+          slotIndex: 2,
+          category: 'majority',
+          voteCount: 2,
+          chars: new Map([['claude', []], ['gemini', ['、']], ['gpt', []]]),
+          dominantValue: '',
+          originalValue: '',
+          differsFromOriginal: false,
+          included: false,
+          resolved: false,
+          autoResolved: false,
+          userResolved: false,
+          selectedModel: null,
+          resolvedValue: null,
+          displayOrder: calculateComparisonDisplayOrder(1, 2)
+        });
+        diff.majorityPositions.set('1:3', {
+          key: '1:3',
+          position: 1,
+          basePosition: 1,
+          slotIndex: 3,
+          category: 'majority',
+          voteCount: 2,
+          chars: new Map([['claude', []], ['gemini', ['「']], ['gpt', []]]),
+          dominantValue: '',
+          originalValue: '',
+          differsFromOriginal: false,
+          included: false,
+          resolved: false,
+          autoResolved: false,
+          userResolved: false,
+          selectedModel: null,
+          resolvedValue: null,
+          displayOrder: calculateComparisonDisplayOrder(1, 3)
+        });
+        return diff;
+      };
+      // Mixed annotation+separator functions must not form a boundary group
+      assert.equal(buildBoundaryGroupEntries(createGroupedDiff()).has('group:1'), false,
+        'mixed-function slots (annotation + separator) do not form a boundary group');
+      // resolveBoundaryGroupPosition returns false gracefully when no group exists
+      const diffForResolve = createGroupedDiff();
+      const groupResolved = resolveBoundaryGroupPosition(diffForResolve, 'group:1', true, '。」、「', 'gemini');
+      assert.equal(groupResolved, false, 'resolveBoundaryGroupPosition returns false when the target group does not exist');
+      assert.equal(diffForResolve.identicalPositions.get('1:0').resolvedValue, '。',
+        'identical slot is preserved when group resolution finds no group to act on');
+      assert.equal(diffForResolve.conflictPositions.get('1:1').resolvedValue, null,
+        'conflict slot is untouched when group resolution finds no group');
     }
   },
   {
@@ -11798,6 +12797,85 @@ const adjudicationTestSuites = [
       app.DeletePunctuation('seg-001', '1.0');
       stats = app.currentSegmentStats();
       assert.equal(stats.inserted, 1, 'inserted count decrements after deletion');
+    }
+  },
+  {
+    name: 'T118-T-UNIT currentSegmentStats counts mixed-function boundary slots individually not as a single grouped unit',
+    fn(assert) {
+      const app = adjApp();
+      const diff = createEmptyPositionDiff();
+      diff.conflictPositions.set('1:0', {
+        key: '1:0',
+        position: 1,
+        basePosition: 1,
+        slotIndex: 0,
+        category: 'conflict',
+        voteCount: 1,
+        chars: new Map([['claude', ['、']], ['gemini', ['」']], ['gpt', []]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: false,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        selectedModel: null,
+        resolvedValue: null,
+        displayOrder: calculateComparisonDisplayOrder(1, 0)
+      });
+      diff.majorityPositions.set('1:1', {
+        key: '1:1',
+        position: 1,
+        basePosition: 1,
+        slotIndex: 1,
+        category: 'majority',
+        voteCount: 2,
+        chars: new Map([['claude', []], ['gemini', ['、']], ['gpt', []]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: false,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        selectedModel: null,
+        resolvedValue: null,
+        displayOrder: calculateComparisonDisplayOrder(1, 1)
+      });
+      diff.majorityPositions.set('1:2', {
+        key: '1:2',
+        position: 1,
+        basePosition: 1,
+        slotIndex: 2,
+        category: 'majority',
+        voteCount: 2,
+        chars: new Map([['claude', []], ['gemini', ['「']], ['gpt', []]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: false,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        selectedModel: null,
+        resolvedValue: null,
+        displayOrder: calculateComparisonDisplayOrder(1, 2)
+      });
+
+      app.segments = [
+        { id: 'seg-001', stripped_text: '甲乙', original_text: '甲乙', inline_elements: [], textDiffs: new Map() }
+      ];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': diff };
+      app.positionMaps = { 'seg-001': clonePositionDiff(diff) };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      assert.deepEqual(
+        app.currentSegmentStats(),
+        { identical: 0, majority: 2, conflict: 1, resolved: 0, inserted: 0 },
+        'mixed-function boundary slots count individually: one conflict slot and two majority slots instead of one grouped conflict unit'
+      );
     }
   },
   {
@@ -14428,6 +15506,140 @@ const adjudicationTestSuites = [
       assert.equal(html.includes('data-position-key="1:0"'), true, 'restored inline render keeps punctuation comparison markers');
       assert.equal(html.includes('data-text-diff-index="1"'), true, 'restored inline render keeps text diff markers');
       localStorage.removeItem('fosizhi-adj-session');
+    }
+  },
+  {
+    name: 'T089aa-T-UNIT restoreSession rebuilds saved originalDiffs from candidates so semantic boundary slots are corrected',
+    fn(assert) {
+      const stripped = '甲乙';
+      const original = '甲乙';
+      const makeCandidate = (model, text) => {
+        const walked = collectCandidateWalk(text, stripped, '、「」');
+        return {
+          model,
+          segmentId: 'seg-001',
+          repunctuatedText: text,
+          stripPunctuationChars: '、「」',
+          positions: walked.positions,
+          charMap: walked.charsByPosition,
+          boundaryTokens: walked.boundaryTokens,
+          textInsertionMap: walked.textInsertionMap,
+          alignedChars: walked.alignedChars
+        };
+      };
+      const candidates = [
+        makeCandidate('claude', '甲、乙'),
+        makeCandidate('gemini', '甲」、「乙'),
+        makeCandidate('gpt', '甲乙')
+      ];
+
+      const staleDiff = createEmptyPositionDiff();
+      staleDiff.conflictPositions.set('1:0', {
+        key: '1:0',
+        position: 1,
+        basePosition: 1,
+        slotIndex: 0,
+        category: 'conflict',
+        voteCount: 1,
+        chars: new Map([['claude', ['、']], ['gemini', ['」']], ['gpt', []]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: false,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        selectedModel: null,
+        resolvedValue: null,
+        displayOrder: calculateComparisonDisplayOrder(1, 0)
+      });
+      staleDiff.majorityPositions.set('1:1', {
+        key: '1:1',
+        position: 1,
+        basePosition: 1,
+        slotIndex: 1,
+        category: 'majority',
+        voteCount: 2,
+        chars: new Map([['claude', []], ['gemini', ['、']], ['gpt', []]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: false,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        selectedModel: null,
+        resolvedValue: null,
+        displayOrder: calculateComparisonDisplayOrder(1, 1)
+      });
+      staleDiff.majorityPositions.set('1:2', {
+        key: '1:2',
+        position: 1,
+        basePosition: 1,
+        slotIndex: 2,
+        category: 'majority',
+        voteCount: 2,
+        chars: new Map([['claude', []], ['gemini', ['「']], ['gpt', []]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: false,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        selectedModel: null,
+        resolvedValue: null,
+        displayOrder: calculateComparisonDisplayOrder(1, 2)
+      });
+
+      const payload = {
+        version: '1.0',
+        timestamp: '2026-05-18T11:20:13.000Z',
+        jobMeta: {
+          schemaVersion: '2',
+          sourceFile: 'y035_08.xml',
+          sourceMarkers: 'y035_08_markers.json',
+          stripPunctuationChars: '、「」',
+          models: ['claude', 'gemini', 'gpt'],
+          modelSummaries: [],
+          candidatesBySegment: {
+            'seg-001': candidates.map(serializeCandidate)
+          }
+        },
+        segments: [
+          serializeSessionSegment({
+            id: 'seg-001',
+            tier: 1,
+            stripped_text: stripped,
+            original_text: original,
+            inline_elements: [],
+            textDiffs: new Map(),
+            boundaryTextDiffs: new Map()
+          })
+        ],
+        adjudications: createUnreviewedAdjudications([{ id: 'seg-001' }]),
+        originalDiffs: {
+          'seg-001': serializePositionDiff(staleDiff)
+        },
+        positionMaps: {},
+        fractionalInsertions: {},
+        currentSegmentIdx: 0,
+        view: 'segment',
+        filter: 'all'
+      };
+
+      const restored = adjApp();
+      restored.restoreSession(payload);
+
+      const rebuiltEntries = [
+        ...restored.originalDiffs['seg-001'].majorityPositions.values(),
+        ...restored.originalDiffs['seg-001'].conflictPositions.values()
+      ].sort((left, right) => left.displayOrder - right.displayOrder);
+
+      assert.equal(restored.originalDiffs['seg-001'].conflictPositions.size, 0, 'restore discards the stale manufactured conflict slot and rebuilds from candidates');
+      assert.equal(rebuiltEntries[0].chars.get('claude').join(''), '', 'restored closing-annotation slot omits the lone separator');
+      assert.equal(rebuiltEntries[1].chars.get('claude').join(''), '、', 'restored middle separator slot carries the lone separator');
+      assert.equal(rebuiltEntries[2].chars.get('claude').join(''), '', 'restored opening-annotation slot omits the lone separator');
     }
   },
 
@@ -17679,7 +18891,7 @@ function adjApp() {
           }
 
           let originalDiff = revivePositionDiff(parsed.originalDiffs?.[segment.id]);
-          if (!hasPositionDiffEntries(originalDiff) && candidates.length > 0) {
+          if (candidates.length > 0) {
             originalDiff = buildPositionDiff(
               candidates,
               segment.stripped_text,
@@ -18514,13 +19726,7 @@ function adjApp() {
       if (!diff || this.getCandidates(segmentId).length === 0) {
         return 'conflict';
       }
-      if (diff.conflictPositions.size > 0) {
-        return 'conflict';
-      }
-      if (diff.majorityPositions.size > 0) {
-        return 'majority';
-      }
-      return 'identical';
+      return classifyPositionDiffComparisonCategory(diff);
     },
 
     segmentReviewType(segmentOrId) {
@@ -18569,16 +19775,16 @@ function adjApp() {
 
     segmentWorkingPunctuationStats(segmentId) {
       const diff = this.positionMaps[segmentId] || this.originalDiffs[segmentId] || createEmptyPositionDiff();
-      const majorityEntries = normalizeCollectionValues(diff.majorityPositions);
-      const conflictEntries = normalizeCollectionValues(diff.conflictPositions);
-      const unresolvedMajority = majorityEntries
-        .filter(entry => !entry || typeof entry !== 'object' || entry.resolved !== true)
+      const comparisonUnits = getComparisonCountUnits(diff)
+        .filter(entry => entry && typeof entry === 'object' && entry.category !== 'identical');
+      const unresolvedMajority = comparisonUnits
+        .filter(entry => entry.category === 'majority' && entry.resolved !== true)
         .length;
-      const unresolvedConflict = conflictEntries
-        .filter(entry => !entry || typeof entry !== 'object' || entry.resolved !== true)
+      const unresolvedConflict = comparisonUnits
+        .filter(entry => entry.category === 'conflict' && entry.resolved !== true)
         .length;
-      const resolved = [...majorityEntries, ...conflictEntries]
-        .filter(entry => entry && typeof entry === 'object' && entry.resolved === true)
+      const resolved = comparisonUnits
+        .filter(entry => entry.resolved === true)
         .length;
       const inserted = normalizeFractionalInsertions(this.fractionalInsertions[segmentId]).size;
 
@@ -18878,7 +20084,7 @@ function adjApp() {
       if (['edited', 'accepted'].includes(this.getAdjudicationState(segmentId).status)) return false;
       if (!Object.prototype.hasOwnProperty.call(this.positionMaps, segmentId)) return false;
       const diff = this.positionMaps[segmentId];
-      if (getCollectionSize(diff.conflictPositions) === 0) return false;
+      if (!positionDiffHasConflictUnits(diff)) return false;
       return this.currentSegmentStats().conflict === 0;
     },
 
@@ -19262,6 +20468,10 @@ function adjApp() {
     },
 
     popupPunctuationName() {
+      const entry = this.popupEntry();
+      if (entry?.kind === 'boundary-group') {
+        return boundaryGroupFunctionLabel(entry.functionCategory);
+      }
       return getPunctuationName(this.popupContext().focus || this.popupDisplayValue());
     },
 
@@ -19278,6 +20488,35 @@ function adjApp() {
       const slotKey = entry.key || formatComparisonPositionKey(boundary, entry.slotIndex || 0);
       const usePunctuatedKwic = this.popupUsesPunctuatedKwic();
       const previewModel = this.popupPreviewModel();
+      if (entry.kind === 'boundary-group') {
+        if (previewModel) {
+          const candidate = this.getCandidates(this.currentSegment.id)
+            .find(item => item.model === previewModel);
+          if (candidate) {
+            const rawValue = this.popupModelValue(candidate.model) || '';
+            if (!usePunctuatedKwic) {
+              const chars = getCandidateDisplayChars(candidate, this.currentSegment, stripChars);
+              return {
+                before: collectContextBefore(chars, boundary),
+                focus: rawValue || '∅',
+                after: collectContextAfter(chars, boundary)
+              };
+            }
+            const display = getCandidateKwicDisplay(candidate, this.currentSegment, stripChars);
+            return collectPunctuatedBoundaryGroupKwic(display, boundary, rawValue || '∅');
+          }
+        }
+        if (!usePunctuatedKwic) {
+          const chars = getSegmentDisplayChars(this.currentSegment);
+          return {
+            before: collectContextBefore(chars, boundary),
+            focus: this.popupDisplayValue(),
+            after: collectContextAfter(chars, boundary)
+          };
+        }
+        const display = getSegmentKwicDisplay(this.currentSegment, stripChars);
+        return collectPunctuatedBoundaryGroupKwic(display, boundary, this.popupDisplayValue());
+      }
       if (previewModel) {
         const candidate = this.getCandidates(this.currentSegment.id)
           .find(item => item.model === previewModel);
@@ -19720,22 +20959,28 @@ function adjApp() {
       // FR-026c: capture before entry mutation — filteredSegments.pendingSegments() reads
       // positionMaps[segmentId] in-place, so entry.resolved=true immediately drops the
       // segment from filteredSegments, shifting currentSegment to the next segment.
-      const resolveHadConflicts = getCollectionSize(diff.conflictPositions) > 0;
+      const resolveHadConflicts = positionDiffHasConflictUnits(diff);
       const resolveIsCurrentSegment = resolveHadConflicts && this.currentSegment?.id === segmentId;
       const resolveHasNext = resolveIsCurrentSegment && this.hasNextSegment();
       const resolveNextIdx = this.currentSegmentIdx + 1;
 
-      entry.included = include;
-      entry.resolved = true;
-      entry.userResolved = true;
-      if (char !== undefined) {
-        entry.resolvedValue = char;
-      } else if (include) {
-        entry.resolvedValue = resolvedPunctuationForEntry(entry);
+      if (entry.kind === 'boundary-group') {
+        resolveBoundaryGroupPosition(diff, positionKey, include, char, selectedModel);
       } else {
-        entry.resolvedValue = '';
+        entry.included = include;
+        entry.resolved = true;
+        entry.userResolved = true;
+        if (char !== undefined) {
+          entry.resolvedValue = char;
+        } else if (include) {
+          entry.resolvedValue = resolvedPunctuationForEntry(entry);
+        } else {
+          entry.resolvedValue = '';
+        }
+        entry.selectedModel = selectedModel;
       }
-      entry.selectedModel = selectedModel;
+      // Invalidate render-frame cache so post-mutation calls see updated entries.
+      _bgCacheKey = null;
       this.positionMaps = { ...this.positionMaps, [segmentId]: diff };
       this.closePopup();
       this.exportCompleted = false;
