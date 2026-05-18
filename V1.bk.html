@@ -2340,17 +2340,7 @@
           :style="pickerStyle()"
           @click.outside="closePicker()">
           <div class="adj-popup-header adj-picker-header">
-            <template x-if="pickerEditingInsertion()">
-              <div style="display:flex; align-items:center; gap:0.5rem;">
-                <div class="adj-popup-badge marker-inserted">
-                  <span x-text="pickerEditingInsertionName()"></span>
-                </div>
-                <small style="font-weight:600;">修改或移除插入標點</small>
-              </div>
-            </template>
-            <template x-if="!pickerEditingInsertion()">
-              <strong x-text="pickerLabel()"></strong>
-            </template>
+            <strong x-text="pickerLabel()"></strong>
           </div>
           <div class="adj-popup-context adj-picker-context">
             <div class="adj-popup-meta">前後文脈絡:</div>
@@ -2373,14 +2363,11 @@
           </div>
           <div class="punctuation-grid adj-picker-grid">
             <template x-for="char in pickerCharacters()" :key="char">
-              <button class="secondary outline" @click="InsertPunctuation(currentSegment.id, pickerResolvedBaseOffset(), char, pickerResolvedPlacement())" x-text="char"></button>
+              <button class="secondary outline" @click="InsertPunctuation(currentSegment.id, pickerResolvedBaseOffset(), char)" x-text="char"></button>
             </template>
           </div>
-          <div class="adj-popup-actions" x-show="!pickerEditingInsertion()">
+          <div class="adj-popup-actions">
             <button class="secondary outline" @click="closePicker()">取消</button>
-          </div>
-          <div class="adj-popup-actions" x-show="pickerEditingInsertion()">
-            <button class="secondary outline" @click="deletePickerInsertion()">不加標點 (刪除)</button>
           </div>
         </div>
       </article>
@@ -2648,11 +2635,11 @@
         <h4>工作階段</h4>
         <div class="adj-session-actions-grid">
           <button class="secondary adj-settings-action" :disabled="!job" @click="saveSession(); $event.target.textContent = '✓ 已儲存'; setTimeout(() => $event.target.textContent = '立即儲存進度', 1500)">立即儲存進度</button>
-          <button class="secondary outline adj-settings-action" :disabled="!hasSavedSession" @click="exportSession()">匯出進度檔</button>
+          <button class="secondary outline adj-settings-action" :disabled="!qryHasSavedSession()" @click="exportSession()">匯出進度檔</button>
           <label class="secondary outline adj-settings-action" role="button" style="text-align:center; cursor:pointer;" @keydown.enter.prevent="$refs.settingsImportInput.click()" @keydown.space.prevent="$refs.settingsImportInput.click()" tabindex="0">匯入進度檔
             <input x-ref="settingsImportInput" class="adj-hidden-file-input" type="file" accept=".json,application/json" @change="importSessionFromFile($event.target.files[0]); $event.target.value = ''">
           </label>
-          <button class="secondary outline contrast adj-settings-action" :disabled="!hasSavedSession" @click="clearSavedSession()">清除已儲存進度</button>
+          <button class="secondary outline contrast adj-settings-action" :disabled="!qryHasSavedSession()" @click="clearSavedSession()">清除已儲存進度</button>
         </div>
       </div>
       <hr style="margin: 1.5rem 0;">
@@ -5764,43 +5751,6 @@ function formatComparisonPositionKey(basePosition, slotIndex = 0) {
   return `${basePosition}:${slotIndex}`;
 }
 
-function normalizeInsertionPlacement(entry) {
-  return entry?.placement === 'after-char' ? 'after-char' : 'before-char';
-}
-
-function compareEventBaseThenDisplayOrder(left, right) {
-  const leftBase = Number(left?.basePosition ?? 0);
-  const rightBase = Number(right?.basePosition ?? 0);
-  if (leftBase !== rightBase) {
-    return leftBase - rightBase;
-  }
-  return Number(left?.displayOrder ?? 0) - Number(right?.displayOrder ?? 0);
-}
-
-function partitionBoundaryEvents(boundaryEvents) {
-  const afterCharInsertions = [];
-  const comparisons = [];
-  const beforeCharInsertions = [];
-
-  (boundaryEvents || []).forEach(event => {
-    if (event?.kind === 'insertion') {
-      if (normalizeInsertionPlacement(event.entry || event) === 'after-char') {
-        afterCharInsertions.push(event);
-      } else {
-        beforeCharInsertions.push(event);
-      }
-      return;
-    }
-    comparisons.push(event);
-  });
-
-  return {
-    afterCharInsertions,
-    comparisons,
-    beforeCharInsertions
-  };
-}
-
 function normalizeSegmentsCollection(rawSegments, sourceLabel) {
   if (Array.isArray(rawSegments)) {
     return rawSegments.map((segment, index) => {
@@ -6089,15 +6039,6 @@ function alignCandidateCharsToOriginalSlots(originalChars, candidateChars) {
       extras.push(char);
     }
   });
-
-  // When LCS finds no match for an original slot, promote the first available extra
-  // into that slot so that "original=，, candidate=：「" yields aligned=['：'], extras=['「']
-  // rather than aligned=[''], extras=['：','「'] which would create a spurious third slot.
-  for (let i = 0; i < aligned.length && extras.length > 0; i += 1) {
-    if (aligned[i] === '') {
-      aligned[i] = extras.shift();
-    }
-  }
 
   return { aligned, extras };
 }
@@ -6866,7 +6807,6 @@ function generateFinalText(strippedText, identicalPositions, resolvedPositions, 
   (identicalPositions instanceof Map ? identicalPositions : new Map()).forEach(entry => {
     if (entry && entry.included !== false) {
       events.push({
-        kind: 'comparison',
         char: resolvedPunctuationForEntry(entry),
         basePosition: entry.basePosition ?? entry.position,
         displayOrder: entry.displayOrder ?? calculateComparisonDisplayOrder(entry.basePosition ?? entry.position, entry.slotIndex || 0)
@@ -6878,7 +6818,6 @@ function generateFinalText(strippedText, identicalPositions, resolvedPositions, 
     if (entry && entry.included && entry.char) {
       const fallbackBasePosition = Number(positionKey);
       events.push({
-        kind: 'comparison',
         char: entry.char,
         basePosition: entry.basePosition ?? fallbackBasePosition,
         displayOrder: entry.displayOrder ?? calculateComparisonDisplayOrder(fallbackBasePosition)
@@ -6889,16 +6828,14 @@ function generateFinalText(strippedText, identicalPositions, resolvedPositions, 
   normalizeFractionalInsertions(fractionalInsertions).forEach(entry => {
     if (entry && entry.char) {
       events.push({
-        kind: 'insertion',
         char: entry.char,
         basePosition: entry.basePosition,
-        displayOrder: entry.displayOrder,
-        placement: normalizeInsertionPlacement(entry)
+        displayOrder: entry.displayOrder
       });
     }
   });
 
-  events.sort(compareEventBaseThenDisplayOrder);
+  events.sort((left, right) => left.displayOrder - right.displayOrder);
 
   let result = '';
   let eventIndex = 0;
@@ -6909,16 +6846,10 @@ function generateFinalText(strippedText, identicalPositions, resolvedPositions, 
   }
 
   for (let boundary = 0; boundary <= chars.length; boundary += 1) {
-    const boundaryEvents = [];
     while (eventIndex < events.length && events[eventIndex].basePosition === boundary) {
-      boundaryEvents.push(events[eventIndex]);
+      result += events[eventIndex].char;
       eventIndex += 1;
     }
-
-    const { afterCharInsertions, comparisons, beforeCharInsertions } = partitionBoundaryEvents(boundaryEvents);
-    [...afterCharInsertions, ...comparisons, ...beforeCharInsertions].forEach(event => {
-      result += event.char;
-    });
 
     if (boundary < chars.length) {
       result += chars[boundary];
@@ -7081,12 +7012,11 @@ function listDisplayEvents(positionDiff, fractionalInsertions) {
       entry,
       basePosition: entry.basePosition,
       displayOrder: entry.displayOrder,
-      placement: normalizeInsertionPlacement(entry),
       char: entry.char
     });
   });
 
-  events.sort(compareEventBaseThenDisplayOrder);
+  events.sort((left, right) => left.displayOrder - right.displayOrder);
   return events;
 }
 
@@ -7362,12 +7292,10 @@ function buildCurrentInlineDisplaySequence(segment, positionDiff, fractionalInse
   const tokens = [];
   const charTokenIndexByBase = Array(chars.length).fill(-1);
   const boundaryInsertionIndex = Array(chars.length + 1).fill(0);
-  const insertionTokenIndexByKey = new Map();
   let eventIndex = 0;
 
   while (eventIndex < events.length && events[eventIndex].basePosition === -1) {
     if (events[eventIndex].char) {
-      insertionTokenIndexByKey.set(events[eventIndex].key, tokens.length);
       tokens.push(events[eventIndex].char);
     }
     eventIndex += 1;
@@ -7376,26 +7304,14 @@ function buildCurrentInlineDisplaySequence(segment, positionDiff, fractionalInse
   const leadingInsertionIndex = tokens.length;
 
   for (let boundary = 0; boundary <= chars.length; boundary += 1) {
-    const boundaryEvents = [];
-    while (eventIndex < events.length && events[eventIndex].basePosition === boundary) {
-      boundaryEvents.push(events[eventIndex]);
+    while (eventIndex < events.length
+      && events[eventIndex].basePosition === boundary
+      && events[eventIndex].kind !== 'insertion') {
+      if (events[eventIndex].char) {
+        tokens.push(events[eventIndex].char);
+      }
       eventIndex += 1;
     }
-
-    const { afterCharInsertions, comparisons, beforeCharInsertions } = partitionBoundaryEvents(boundaryEvents);
-
-    afterCharInsertions.forEach(event => {
-      if (event.char) {
-        insertionTokenIndexByKey.set(event.key, tokens.length);
-        tokens.push(event.char);
-      }
-    });
-
-    comparisons.forEach(event => {
-      if (event.char) {
-        tokens.push(event.char);
-      }
-    });
 
     (boundaryTextDiffs.get(boundary) || []).forEach(entry => {
       const displayValue = getTextDiffDisplayValue(entry);
@@ -7404,12 +7320,12 @@ function buildCurrentInlineDisplaySequence(segment, positionDiff, fractionalInse
       }
     });
 
-    beforeCharInsertions.forEach(event => {
-      if (event.char) {
-        insertionTokenIndexByKey.set(event.key, tokens.length);
-        tokens.push(event.char);
+    while (eventIndex < events.length && events[eventIndex].basePosition === boundary) {
+      if (events[eventIndex].char) {
+        tokens.push(events[eventIndex].char);
       }
-    });
+      eventIndex += 1;
+    }
 
     boundaryInsertionIndex[boundary] = tokens.length;
 
@@ -7428,7 +7344,6 @@ function buildCurrentInlineDisplaySequence(segment, positionDiff, fractionalInse
     tokens,
     charTokenIndexByBase,
     boundaryInsertionIndex,
-    insertionTokenIndexByKey,
     leadingInsertionIndex
   };
 }
@@ -7713,19 +7628,10 @@ function buildInlineViewHtml(segment, positionDiff, fractionalInsertions, insert
   }
 
   for (let boundary = 0; boundary <= chars.length; boundary += 1) {
-    const boundaryEvents = [];
-    while (eventIndex < events.length && events[eventIndex].basePosition === boundary) {
-      boundaryEvents.push(events[eventIndex]);
-      eventIndex += 1;
-    }
-
-    const { afterCharInsertions, comparisons, beforeCharInsertions } = partitionBoundaryEvents(boundaryEvents);
-
-    afterCharInsertions.forEach(event => {
-      html += `<span class="marker marker-inserted" data-base-offset="${event.basePosition}" data-fractional-key="${escapeHtml(event.key)}">${escapeHtml(event.char)}</span>`;
-    });
-
-    comparisons.forEach(event => {
+    while (eventIndex < events.length
+      && events[eventIndex].basePosition === boundary
+      && events[eventIndex].kind !== 'insertion') {
+      const event = events[eventIndex];
       const classes = ['marker', `marker-${event.entry.category}`];
       if (event.entry.resolved && !event.entry.autoResolved) {
         classes.push('marker-resolved');
@@ -7739,7 +7645,8 @@ function buildInlineViewHtml(segment, positionDiff, fractionalInsertions, insert
         `display: ${event.char}`
       ].join(' | ');
       html += `<span class="${classes.join(' ')}" data-position-key="${escapeHtml(event.entry.key || String(event.entry.position))}" title="${escapeHtml(title)}">${escapeHtml(event.char)}</span>`;
-    });
+      eventIndex += 1;
+    }
 
     (boundaryTextDiffs.get(boundary) || []).forEach(entry => {
       const classes = ['marker-textmismatch', `textdiff-${entry.category}`];
@@ -7749,9 +7656,11 @@ function buildInlineViewHtml(segment, positionDiff, fractionalInsertions, insert
       html += `<span class="${classes.join(' ')}" data-text-diff-key="${escapeHtml(entry.key || formatBoundaryTextDiffKey(entry.basePosition, entry.slotIndex))}" title="${escapeHtml(title)}">${escapeHtml(getTextDiffDisplayValue(entry))}</span>`;
     });
 
-    beforeCharInsertions.forEach(event => {
+    while (eventIndex < events.length && events[eventIndex].basePosition === boundary) {
+      const event = events[eventIndex];
       html += `<span class="marker marker-inserted" data-base-offset="${event.basePosition}" data-fractional-key="${escapeHtml(event.key)}">${escapeHtml(event.char)}</span>`;
-    });
+      eventIndex += 1;
+    } 
 
     if (boundary < chars.length) {
       const char = chars[boundary];
@@ -8765,51 +8674,6 @@ const adjudicationTestSuites = [
       assert.equal(entry.chars.get('claude')[0], '。', 'claude value stays on the shared slot');
       assert.equal(entry.chars.get('gemini')[0], '，', 'gemini value stays on the shared slot');
       assert.equal(entry.chars.get('gpt')[0], '；', 'gpt value stays on the shared slot');
-    }
-  },
-  {
-    name: 'T009a4-T-UNIT buildPositionDiff promotes LCS-unmatched candidate chars into original slots',
-    fn(assert) {
-      // Regression: gemini has ：「 where original has ，. LCS finds no match between ['，'] and
-      // ['：','「'], leaving the original slot empty and producing 3 slots instead of 2. The fix
-      // must promote the first extra ('：') into the unmatched original slot so the result is:
-      //   slot 12:0 — majority ：(claude=：, gemini=：, gpt=，)
-      //   slot 12:1 — majority ∅ (claude=∅, gemini=「, gpt=∅)
-      const stripped = '曹國公欽奉聖旨天下僧道';
-      const original = '曹國公欽奉聖旨，天下僧道';
-      const makeCandidate = (model, text) => {
-        const walked = collectCandidateWalk(text, stripped, '，：；「」');
-        return {
-          model,
-          repunctuatedText: text,
-          stripPunctuationChars: '，：；「」',
-          positions: walked.positions,
-          charMap: walked.charsByPosition
-        };
-      };
-
-      const diff = buildPositionDiff([
-        makeCandidate('claude', '曹國公欽奉聖旨：天下僧道'),
-        makeCandidate('gemini', '曹國公欽奉聖旨：「天下僧道'),
-        makeCandidate('gpt', '曹國公欽奉聖旨，天下僧道')
-      ], stripped, original, '，：；「」');
-
-      const allComparison = [
-        ...diff.majorityPositions.values(),
-        ...diff.conflictPositions.values()
-      ].sort((a, b) => a.displayOrder - b.displayOrder);
-
-      assert.equal(allComparison.length, 2, 'gemini ：「 vs claude ：vs gpt ，yields exactly two comparison slots');
-      assert.equal(allComparison[0].category, 'majority', 'first slot is majority (：：，)');
-      assert.equal(allComparison[0].dominantValue, '：', 'majority dominant value is ：');
-      assert.equal(allComparison[0].chars.get('claude').join(''), '：', 'claude contributes ：to first slot');
-      assert.equal(allComparison[0].chars.get('gemini').join(''), '：', 'gemini contributes ：to first slot (promoted from extras)');
-      assert.equal(allComparison[0].chars.get('gpt').join(''), '，', 'gpt contributes ，to first slot');
-      assert.equal(allComparison[1].category, 'majority', 'second slot is majority (∅「∅)');
-      assert.equal(allComparison[1].dominantValue, '', 'second majority dominant is empty (omission wins)');
-      assert.equal(allComparison[1].chars.get('gemini').join(''), '「', 'gemini contributes 「to second slot');
-      assert.equal(allComparison[1].chars.get('claude').join(''), '', 'claude has no second slot value');
-      assert.equal(allComparison[1].chars.get('gpt').join(''), '', 'gpt has no second slot value');
     }
   },
   {
@@ -11295,10 +11159,8 @@ const adjudicationTestSuites = [
       assert.equal(app.pickerShowPositionSelector(), true, 'first character picker shows before/after selector');
       assert.equal(app.pickerContext().focus, '西', 'picker highlights clicked first character in KWIC preview');
       assert.equal(app.pickerResolvedBaseOffset(), 1, 'after-mode inserts after clicked first character');
-      assert.equal(app.pickerResolvedPlacement(), 'after-char', 'after-mode inserts on the clicked character side of the shared boundary');
       app.pickerPositionMode = 'before';
       assert.equal(app.pickerResolvedBaseOffset(), 0, 'first-character before-mode inserts at the boundary before the first character');
-      assert.equal(app.pickerResolvedPlacement(), 'before-char', 'before-mode inserts on the next-character side of the shared boundary');
       assert.equal(app.pickerX, 16, 'picker stays horizontally aligned with the clicked character');
       assert.equal(app.pickerY, 36, 'picker stays directly below the clicked character');
       assert.equal(app.pickerPlacement, 'below', 'normal picker prefers the space below the clicked character');
@@ -11309,14 +11171,11 @@ const adjudicationTestSuites = [
       assert.equal(app.pickerShowPositionSelector(), true, 'character immediately after punctuation also shows before/after selector');
       assert.equal(app.pickerContext().focus, '二', 'picker highlights clicked character in KWIC preview');
       assert.equal(app.pickerResolvedBaseOffset(), 3, 'after-mode inserts after clicked character');
-      assert.equal(app.pickerResolvedPlacement(), 'after-char', 'after-mode keeps the insertion on the previous-character side of existing punctuation');
       app.pickerPositionMode = 'before';
       assert.equal(app.pickerResolvedBaseOffset(), 2, 'before-mode inserts at the punctuation boundary immediately before the clicked character');
-      assert.equal(app.pickerResolvedPlacement(), 'before-char', 'before-mode keeps the insertion on the clicked-character side of existing punctuation');
 
       app.openPicker(4, { getBoundingClientRect: () => ({ left: 140, right: 170, bottom: 30, top: 8 }) }, 'char');
       assert.equal(app.pickerShowPositionSelector(), false, 'normal characters without punctuation before can only insert behind');
-      assert.equal(app.pickerResolvedPlacement(), 'before-char', 'single-direction insertions preserve the legacy boundary placement when no selector is shown');
       assert.equal(app.pickerCharacters()[0], '，', 'picker uses curated punctuation ordering');
       assert.equal(app.pickerCharacters().includes('《'), true, 'picker includes curated punctuation');
       assert.equal(app.pickerCharacters().includes('﹁'), true, 'picker appends job-specific extra punctuation');
@@ -11408,168 +11267,6 @@ const adjudicationTestSuites = [
         { before: '甲，乙丁！', focus: '▼', after: '丙' },
         'boundary picker anchor appears at the same insertion point used by the inline renderer'
       );
-
-      const insertedAnchor = {
-        dataset: { fractionalKey: '2.0' },
-        getBoundingClientRect: () => ({ left: 24, right: 54, bottom: 20, top: 5 })
-      };
-      app.openPicker(2, insertedAnchor, 'insertion');
-      assert.deepEqual(
-        app.pickerContext(),
-        { before: '甲，乙丁', focus: '！', after: '丙' },
-        'editing an inserted marker highlights the inserted punctuation itself inside the picker KWIC'
-      );
-      assert.equal(app.pickerResolvedPlacement(), 'before-char', 'editing an inserted marker preserves the stored boundary placement');
-    }
-  },
-  {
-    name: 'T027j-T-UNIT shared punctuation boundaries keep after-char and before-char insertions on opposite sides of omission markers',
-    fn(assert) {
-      const app = adjApp();
-      const diff = createEmptyPositionDiff();
-      diff.majorityPositions.set('1:0', {
-        key: '1:0',
-        position: 1,
-        basePosition: 1,
-        slotIndex: 0,
-        category: 'majority',
-        voteCount: 2,
-        chars: new Map([
-          ['claude', []],
-          ['gemini', []],
-          ['gpt', ['，']]
-        ]),
-        dominantValue: '',
-        originalValue: '',
-        differsFromOriginal: false,
-        included: false,
-        resolved: false,
-        autoResolved: false,
-        userResolved: false,
-        selectedModel: null,
-        resolvedValue: null,
-        displayOrder: calculateComparisonDisplayOrder(1, 0)
-      });
-
-      app.job = {
-        schemaVersion: '1',
-        sourceFile: 'test.xml',
-        sourceMarkers: 'test_markers.json',
-        stripPunctuationChars: '，。'
-      };
-      app.segments = [{
-        id: 'seg-001',
-        stripped_text: '鬯檢',
-        original_text: '鬯檢',
-        inline_elements: [],
-        textDiffs: new Map(),
-        boundaryTextDiffs: new Map()
-      }];
-      app.adjudications = createUnreviewedAdjudications(app.segments);
-      app.filter = 'all';
-      app.currentSegmentIdx = 0;
-      app.originalDiffs = { 'seg-001': diff };
-      app.positionMaps = { 'seg-001': clonePositionDiff(diff) };
-      app.fractionalInsertions = { 'seg-001': new Map() };
-
-      app.openPicker(1, { getBoundingClientRect: () => ({ left: 24, right: 54, bottom: 20, top: 5 }) }, 'char');
-      app.InsertPunctuation('seg-001', app.pickerResolvedBaseOffset(), '」', app.pickerResolvedPlacement());
-      let display = buildCurrentInlineDisplaySequence(
-        app.currentSegment,
-        app.positionMaps['seg-001'],
-        app.fractionalInsertions['seg-001']
-      );
-      assert.deepEqual(display.tokens, ['鬯', '」', '∅', '檢'], 'after-char insertions stay between the clicked character and an existing omission marker');
-
-      app.fractionalInsertions = { 'seg-001': new Map() };
-      app.openPicker(2, { getBoundingClientRect: () => ({ left: 64, right: 94, bottom: 20, top: 5 }) }, 'char');
-      app.pickerPositionMode = 'before';
-      app.InsertPunctuation('seg-001', app.pickerResolvedBaseOffset(), '「', app.pickerResolvedPlacement());
-      display = buildCurrentInlineDisplaySequence(
-        app.currentSegment,
-        app.positionMaps['seg-001'],
-        app.fractionalInsertions['seg-001']
-      );
-      assert.deepEqual(display.tokens, ['鬯', '∅', '「', '檢'], 'before-char insertions stay between an existing omission marker and the clicked character');
-
-      localStorage.removeItem('fosizhi-adj-session');
-    }
-  },
-  {
-    name: 'T027k-T-UNIT pickerResolvedPlacement uses after-char when no selector is shown but events exist at the insertion boundary',
-    fn(assert) {
-      // Scenario: segment = '前日曹', comparison slot '，' at boundary 2 (after '日' at index 1).
-      // No events at boundary 1 (before '日'), so pickerShowPositionSelector() is false.
-      // Clicking '日' (data-base-offset=2) and inserting '』' must place it BEFORE '，',
-      // giving tokens ['前', '日', '』', '，', '曹'] — not ['前', '日', '，', '』', '曹'].
-      const app = adjApp();
-      const diff = createEmptyPositionDiff();
-      diff.majorityPositions.set('2:0', {
-        key: '2:0',
-        position: 2,
-        basePosition: 2,
-        slotIndex: 0,
-        category: 'majority',
-        voteCount: 2,
-        chars: new Map([
-          ['claude', ['，']],
-          ['gemini', ['，']],
-          ['gpt', []]
-        ]),
-        dominantValue: '，',
-        originalValue: '，',
-        differsFromOriginal: false,
-        included: true,
-        resolved: false,
-        autoResolved: false,
-        userResolved: false,
-        selectedModel: null,
-        resolvedValue: null,
-        displayOrder: calculateComparisonDisplayOrder(2, 0)
-      });
-
-      app.job = {
-        schemaVersion: '1',
-        sourceFile: 'test.xml',
-        sourceMarkers: 'test_markers.json',
-        stripPunctuationChars: '，。』'
-      };
-      app.segments = [{
-        id: 'seg-001',
-        stripped_text: '前日曹',
-        original_text: '前日，曹',
-        inline_elements: [],
-        textDiffs: new Map(),
-        boundaryTextDiffs: new Map()
-      }];
-      app.adjudications = createUnreviewedAdjudications(app.segments);
-      app.filter = 'all';
-      app.currentSegmentIdx = 0;
-      app.originalDiffs = { 'seg-001': diff };
-      app.positionMaps = { 'seg-001': clonePositionDiff(diff) };
-      app.fractionalInsertions = { 'seg-001': new Map() };
-
-      // Open picker on '日' (index 1 → data-base-offset = 2)
-      app.openPicker(2, { getBoundingClientRect: () => ({ left: 40, right: 70, bottom: 20, top: 5 }) }, 'char');
-
-      assert.equal(app.pickerShowPositionSelector(), false,
-        'no bidirectional selector when there are no events immediately before the clicked character');
-      assert.equal(app.pickerResolvedPlacement(), 'after-char',
-        'placement is after-char when events exist at the insertion boundary so insertion lands before those markers');
-      assert.equal(app.pickerResolvedBaseOffset(), 2,
-        'base offset stays at the boundary after the clicked character');
-
-      app.InsertPunctuation('seg-001', app.pickerResolvedBaseOffset(), '』', app.pickerResolvedPlacement());
-
-      const display = buildCurrentInlineDisplaySequence(
-        app.currentSegment,
-        app.positionMaps['seg-001'],
-        app.fractionalInsertions['seg-001']
-      );
-      assert.deepEqual(display.tokens, ['前', '日', '』', '，', '曹'],
-        'inserted 』 appears between 日 and the existing ， comparison slot');
-
-      localStorage.removeItem('fosizhi-adj-session');
     }
   },
   {
@@ -11726,7 +11423,6 @@ const adjudicationTestSuites = [
         basePosition: 1,
         subPosition: 0,
         displayOrder: 11,
-        placement: 'before-char',
         char: '；'
       }, 'stored insertion keeps the expected keyed shape');
     }
@@ -14332,36 +14028,6 @@ const adjudicationTestSuites = [
       localStorage.removeItem('fosizhi-adj-session');
     }
   },
-  {
-    name: 'T089b-T-UNIT hasSavedSession stays synchronized with save and clear operations',
-    fn(assert) {
-      const app = adjApp();
-      localStorage.removeItem('fosizhi-adj-session');
-      app.loadSavedSessionMeta();
-
-      assert.equal(app.hasSavedSession, false, 'hasSavedSession starts false when no session is stored');
-
-      app.job = {
-        schemaVersion: '1',
-        sourceFile: 'y001/y001_01.xml',
-        sourceMarkers: 'y001_01_markers.json',
-        stripPunctuationChars: '，。',
-        candidatesBySegment: {},
-        models: ['claude'],
-        modelSummaries: []
-      };
-      app.segments = [{ id: 'seg-001', tier: 1, stripped_text: '甲乙', original_text: '甲乙', inline_elements: [] }];
-      app.adjudications = createUnreviewedAdjudications(app.segments);
-      app.saveSession();
-
-      assert.equal(app.hasSavedSession, true, 'saveSession flips the reactive hasSavedSession flag on');
-
-      app.clearSavedSession();
-      assert.equal(app.hasSavedSession, false, 'clearSavedSession flips the reactive hasSavedSession flag off');
-
-      localStorage.removeItem('fosizhi-adj-session');
-    }
-  },
 
   {
     name: 'T089a-T-UNIT saveSession/restoreSession preserve nested candidate and diff Maps for downloaded sessions',
@@ -15466,7 +15132,7 @@ const adjudicationTestSuites = [
       assert.equal(drawerSnippet.includes('@click="exportSession()"'), true, 'work-session block keeps the export-session control');
       assert.equal(drawerSnippet.includes('匯入進度檔'), true, 'work-session block keeps the import-session control');
       assert.equal(drawerSnippet.includes('@click="clearSavedSession()"'), true, 'work-session block keeps the clear-session control');
-      assert.equal(drawerSnippet.includes(':disabled="!hasSavedSession"'), true, 'session export/clear controls stay visible and bind to the reactive saved-session flag');
+      assert.equal(drawerSnippet.includes(':disabled="!qryHasSavedSession()"'), true, 'session export/clear controls stay visible and disable instead of disappearing');
       assert.equal(drawerSnippet.includes(':disabled="!job"'), true, 'manual save stays visible and disables only when no job is loaded');
       assert.equal(drawerSnippet.indexOf('重新載入（回到載入頁）') < drawerSnippet.indexOf('執行內建測試'), true, 'built-in tests remain the final bottom utility action');
     }
@@ -16600,74 +16266,6 @@ const adjudicationTestSuites = [
 
       localStorage.removeItem(SESSION_STORAGE_KEY);
     }
-  },
-
-  // ─── Phase 21 RED: finalizeAndExport must NOT commit unresolved segments ────
-
-  {
-    name: 'T116-T-BUG finalizeAndExport does NOT commit a segment that still has unresolved conflict positions',
-    fn(assert) {
-      const createConflictDiff = () => {
-        const diff = createEmptyPositionDiff();
-        diff.conflictPositions.set('1:0', {
-          key: '1:0',
-          position: 1,
-          basePosition: 1,
-          slotIndex: 0,
-          category: 'conflict',
-          voteCount: 1,
-          chars: new Map([['claude', ['，']], ['gemini', ['。']], ['gpt', []]]),
-          dominantValue: '，',
-          originalValue: '',
-          differsFromOriginal: true,
-          included: false,
-          resolved: false,
-          autoResolved: false,
-          userResolved: false,
-          selectedModel: null,
-          resolvedValue: null,
-          displayOrder: calculateComparisonDisplayOrder(1)
-        });
-        return diff;
-      };
-
-      const app = adjApp();
-      const segments = [
-        { id: '001', stripped_text: '甲乙', original_text: '甲乙', inline_elements: [], textDiffs: new Map(), boundaryTextDiffs: new Map() }
-      ];
-      app.job = {
-        schemaVersion: '1',
-        sourceFile: 'test.xml',
-        sourceMarkers: 'test_markers.json',
-        stripPunctuationChars: '，。',
-        candidatesBySegment: { '001': [{ model: 'claude', repunctuated_text: '甲，乙', positions: new Set([1]), charMap: new Map() }] },
-        models: ['claude'],
-        modelSummaries: []
-      };
-      app.segments = segments;
-      app.originalDiffs = { '001': createConflictDiff() };
-      app.adjudications = createUnreviewedAdjudications(segments);
-      app.filter = 'all';
-      app.view = 'segment';
-      app.currentSegmentIdx = 0;
-
-      // Opening the segment creates positionMaps['001'] — the existing (buggy)
-      // guard "if (this.positionMaps[segmentId])" evaluates true here, causing
-      // FinalizeEdit to commit the segment unconditionally.
-      app.OpenSegment(0);
-
-      assert.equal(Object.prototype.hasOwnProperty.call(app.positionMaps, '001'), true, 'precondition: positionMaps["001"] exists after OpenSegment');
-      assert.equal(app.getAdjudicationState('001').status, 'unreviewed', 'precondition: segment is unreviewed before finalizeAndExport');
-
-      // Act — click 生成最終文本 without resolving the conflict
-      app.finalizeAndExport('001');
-
-      // Assert: unresolved segment must NOT be committed
-      assert.equal(app.getAdjudicationState('001').status, 'unreviewed', 'finalizeAndExport must NOT commit a segment that still has unresolved conflict positions');
-
-      // Assert: export navigation still happens even for unresolved segments
-      assert.equal(app.view, 'export', 'finalizeAndExport always navigates to the export screen');
-    }
   }
 ];
 
@@ -16978,7 +16576,6 @@ function adjApp() {
     insertionMode: false,
     pickerOpen: false,
     pickerBaseOffset: null,
-    pickerFractionalKey: null,
     pickerAnchorType: 'char',
     pickerPositionMode: 'after',
     pickerX: 0,
@@ -17028,7 +16625,6 @@ function adjApp() {
     _testConnAbortController: null,
     savedSessionTime: '',
     savedSessionProgress: '',
-    hasSavedSession: false,
     restoreDialogMode: 'restore',
     conflictResolvedDialogOpen: false,
     conflictResolvedPendingSegmentIdx: null,
@@ -17620,7 +17216,7 @@ function adjApp() {
     },
 
     qryHasSavedSession() {
-      return !!this.hasSavedSession || localStorage.getItem(SESSION_STORAGE_KEY) !== null;
+      return localStorage.getItem(SESSION_STORAGE_KEY) !== null;
     },
 
     saveSession() {
@@ -17729,7 +17325,6 @@ function adjApp() {
       localStorage.removeItem(SESSION_STORAGE_KEY);
       this.savedSessionTime = '';
       this.savedSessionProgress = '';
-      this.hasSavedSession = false;
     },
 
     startNewSession() {
@@ -17743,7 +17338,6 @@ function adjApp() {
       if (!raw) {
         this.savedSessionTime = '';
         this.savedSessionProgress = '';
-        this.hasSavedSession = false;
         return;
       }
       try {
@@ -17755,11 +17349,9 @@ function adjApp() {
         const total = (data.segments || []).length;
         const done = Object.values(adjs).filter(a => a.status !== 'unreviewed').length;
         this.savedSessionProgress = `${done} / ${total} 段落已裁決`;
-        this.hasSavedSession = true;
       } catch (_) {
         this.savedSessionTime = '';
         this.savedSessionProgress = '';
-        this.hasSavedSession = false;
       }
     },
 
@@ -19471,23 +19063,6 @@ function adjApp() {
       return '選擇標點符號';
     },
 
-    pickerEditingInsertionEntry() {
-      if (!this.currentSegment || this.pickerAnchorType !== 'insertion' || !this.pickerFractionalKey) {
-        return null;
-      }
-      const fractionals = normalizeFractionalInsertions(this.fractionalInsertions[this.currentSegment.id]);
-      return fractionals.get(String(this.pickerFractionalKey)) || null;
-    },
-
-    pickerEditingInsertion() {
-      return !!this.pickerEditingInsertionEntry();
-    },
-
-    pickerEditingInsertionName() {
-      const entry = this.pickerEditingInsertionEntry();
-      return entry?.char ? getPunctuationName(entry.char) : this.pickerLabel();
-    },
-
     pickerContext() {
       if (!this.currentSegment) {
         return { before: '', focus: '▼', after: '' };
@@ -19495,17 +19070,6 @@ function adjApp() {
       const diff = this.ensurePositionMap(this.currentSegment.id);
       const fractionals = this.fractionalInsertions[this.currentSegment.id];
       const display = buildCurrentInlineDisplaySequence(this.currentSegment, diff, fractionals);
-      const editingInsertion = this.pickerEditingInsertionEntry();
-      if (editingInsertion) {
-        const insertionIndex = display.insertionTokenIndexByKey.get(String(this.pickerFractionalKey));
-        if (Number.isInteger(insertionIndex) && insertionIndex >= 0) {
-          return {
-            before: collectContextBefore(display.tokens, insertionIndex),
-            focus: display.tokens[insertionIndex] || editingInsertion.char || '▼',
-            after: collectContextAfter(display.tokens, insertionIndex + 1)
-          };
-        }
-      }
       const chars = getSegmentDisplayChars(this.currentSegment);
       const baseOffset = Number(this.pickerBaseOffset);
       if (this.pickerAnchorType === 'char' && Number.isFinite(baseOffset) && baseOffset > 0) {
@@ -19552,6 +19116,7 @@ function adjApp() {
       return listDisplayEvents(diff, fractionals).some(event => (
         event.basePosition === (baseOffset - 1)
         && event.char
+        && event.char !== '∅'
       ));
     },
 
@@ -19563,30 +19128,6 @@ function adjApp() {
       return this.pickerPositionMode === 'before'
         ? Math.max(0, baseOffset - 1)
         : baseOffset;
-    },
-
-    pickerResolvedPlacement() {
-      const editingInsertion = this.pickerEditingInsertionEntry();
-      if (editingInsertion) {
-        return normalizeInsertionPlacement(editingInsertion);
-      }
-      if (this.pickerShowPositionSelector()) {
-        return this.pickerPositionMode === 'before' ? 'before-char' : 'after-char';
-      }
-      // When the bidirectional selector is not shown but events already exist at the
-      // insertion boundary (e.g. a comparison slot '，' immediately after the clicked
-      // character), the user's intent is to insert *after* the character and *before*
-      // those markers.  Using 'before-char' here would place the insertion after the
-      // existing markers instead, producing wrong order such as "日，』" instead of "日』，".
-      const baseOffset = Number(this.pickerBaseOffset);
-      if (Number.isFinite(baseOffset) && this.currentSegment) {
-        const diff = this.ensurePositionMap(this.currentSegment.id);
-        const fractionals = this.fractionalInsertions[this.currentSegment.id];
-        if (listDisplayEvents(diff, fractionals).some(event => event.basePosition === baseOffset && event.char)) {
-          return 'after-char';
-        }
-      }
-      return 'before-char';
     },
 
     pickerCharacters() {
@@ -19622,7 +19163,6 @@ function adjApp() {
     closePicker() {
       this.pickerOpen = false;
       this.pickerBaseOffset = null;
-      this.pickerFractionalKey = null;
       this.pickerAnchorType = 'char';
       this.pickerPositionMode = 'after';
       this.pickerBottom = 0;
@@ -19673,9 +19213,6 @@ function adjApp() {
       this.rememberFloatingMenuAnchor('picker', element, 336, 430);
       this.applyFloatingMenuPlacement('picker', this.floatingMenuPosition(rect, 336, 430));
       this.pickerBaseOffset = Number(baseOffset);
-      this.pickerFractionalKey = element?.dataset?.fractionalKey != null
-        ? String(element.dataset.fractionalKey)
-        : null;
       this.pickerAnchorType = anchorType
         || (element.classList.contains('marker-inserted') ? 'insertion' : 'char');
       this.pickerPositionMode = 'after';
@@ -19775,13 +19312,12 @@ function adjApp() {
       this.ResolvePosition(this.currentSegment.id, this.popupPositionKey, false, '', 'none');
     },
 
-    InsertPunctuation(segmentId, baseOffset, char, placement = 'before-char') {
+    InsertPunctuation(segmentId, baseOffset, char) {
       const currentMap = normalizeFractionalInsertions(this.fractionalInsertions[segmentId]);
       try {
         const insertion = calculateInsertionPosition(Number(baseOffset), currentMap);
         currentMap.set(insertion.key, {
           ...insertion,
-          placement: normalizeInsertionPlacement({ placement }),
           char
         });
         this.fractionalInsertions = {
@@ -19805,7 +19341,6 @@ function adjApp() {
           ...this.fractionalInsertions,
           [segmentId]: fractionals
         };
-        this.exportCompleted = false;
         this.saveSession();
         return;
       }
@@ -19825,28 +19360,17 @@ function adjApp() {
       }
     },
 
-    deletePickerInsertion() {
-      if (!this.currentSegment || !this.pickerFractionalKey) {
-        return;
-      }
-      this.DeletePunctuation(this.currentSegment.id, this.pickerFractionalKey);
-      this.closePicker();
-    },
-
     FinalizeEdit(segmentId) {
       this.ensurePositionMap(segmentId);
       this.commitSegmentEdit(segmentId);
     },
 
     finalizeAndExport(segmentId) {
-      // Only finalize precision edits if the segment has fully resolved all
-      // conflict positions. positionMaps[segId] is created as soon as the
-      // segment is opened (ensurePositionMap), so its presence alone is
-      // insufficient — it would commit still-unresolved segments as 'edited'.
-      // segmentHasCompletedPrecisionEdit also prevents overwriting an accepted
-      // candidate: AcceptCandidate deletes positionMaps[segId], so hasLiveMap
-      // is false and the guard returns false for pure quick-accept segments.
-      if (this.segmentHasCompletedPrecisionEdit(segmentId)) {
+      // Only finalize precision edits if positionMaps has an entry for this
+      // segment. AcceptCandidate deletes positionMaps[segId], so calling
+      // FinalizeEdit after a pure quick-accept would regenerate golden text
+      // from originalDiffs and overwrite the accepted candidate — wrong.
+      if (this.positionMaps[segmentId]) {
         this.FinalizeEdit(segmentId);
       }
       this.ExportGolden(false, true);
