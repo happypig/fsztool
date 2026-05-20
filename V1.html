@@ -2457,7 +2457,7 @@
             <button type="button" :class="{ selected: exportPreviewMode === 'golden' }" :aria-pressed="exportPreviewMode === 'golden'" @click="exportPreviewMode = 'golden'">Golden JSON</button>
           </div>
           <div class="adj-export-preview-card">
-            <template x-if="exportPreviewMode === 'current'">
+            <template x-if="view === 'export' && exportPreviewMode === 'current'">
               <div class="adj-export-preview-list">
                 <template x-for="item in exportPreviewParagraphs()" :key="item.id">
                   <article class="adj-export-preview-paragraph" :class="item.stateClass">
@@ -2472,7 +2472,7 @@
                 </template>
               </div>
             </template>
-            <template x-if="exportPreviewMode === 'golden'">
+            <template x-if="view === 'export' && exportPreviewMode === 'golden'">
               <textarea readonly rows="16" class="adj-export-preview adj-export-preview-json" x-text="exportPreviewContent()"></textarea>
             </template>
           </div>
@@ -15249,7 +15249,7 @@ const adjudicationTestSuites = [
   },
 
   {
-    name: 'T085-T-UNIT saveSession is called after AcceptCandidate, ResolvePosition, InsertPunctuation, DeletePunctuation, FinalizeEdit',
+    name: 'T085-T-UNIT debouncedSaveSession is called (save scheduled) after AcceptCandidate, ResolvePosition, InsertPunctuation, DeletePunctuation, FinalizeEdit',
     async fn(assert) {
       const app = adjApp();
       localStorage.removeItem('fosizhi-adj-session');
@@ -15270,28 +15270,28 @@ const adjudicationTestSuites = [
       app.adjudications['seg-001'] = { status: 'unreviewed', goldenText: null, sourceModel: null, edited: false };
 
       let saveCount = 0;
-      const orig = app.saveSession.bind(app);
-      app.saveSession = function() { saveCount++; orig(); };
+      const origDebounced = app.debouncedSaveSession.bind(app);
+      app.debouncedSaveSession = function(...args) { saveCount++; origDebounced(...args); };
 
       app.AcceptCandidate('seg-001', 'claude');
-      assert.equal(saveCount >= 1, true, 'saveSession called after AcceptCandidate');
+      assert.equal(saveCount >= 1, true, 'save scheduled after AcceptCandidate');
 
       app.OpenSegment(0);
       const diff = app.ensurePositionMap('seg-001');
       app.ResolvePosition('seg-001', Object.keys(diff.conflictPositions)[0] || '1:0', true);
-      assert.equal(saveCount >= 2, true, 'saveSession called after ResolvePosition');
+      assert.equal(saveCount >= 2, true, 'save scheduled after ResolvePosition');
 
       app.InsertPunctuation('seg-001', 0, '，');
-      assert.equal(saveCount >= 3, true, 'saveSession called after InsertPunctuation');
+      assert.equal(saveCount >= 3, true, 'save scheduled after InsertPunctuation');
 
       const fracKeys = [...(app.fractionalInsertions['seg-001']?.keys() || [])];
       if (fracKeys.length > 0) {
         app.DeletePunctuation('seg-001', fracKeys[0]);
-        assert.equal(saveCount >= 4, true, 'saveSession called after DeletePunctuation');
+        assert.equal(saveCount >= 4, true, 'save scheduled after DeletePunctuation');
       }
 
       app.FinalizeEdit('seg-001');
-      assert.equal(saveCount >= 5, true, 'saveSession called after FinalizeEdit');
+      assert.equal(saveCount >= 5, true, 'save scheduled after FinalizeEdit');
 
       localStorage.removeItem('fosizhi-adj-session');
     }
@@ -15881,6 +15881,7 @@ const adjudicationTestSuites = [
       assert.equal(resumeApp.progressStats.done >= 1, true, 'saved adjudication progress is restored');
 
       resumeApp.AcceptCandidate('002', 'claude');
+      resumeApp.saveSession(); // flush debounced save before reading localStorage
       const resumedSave = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY));
       assert.equal(resumedSave.adjudications['002'].status, 'accepted', 'auto-save still persists edits after restoring from a draft');
 
@@ -17880,6 +17881,82 @@ const adjudicationTestSuites = [
       // Assert: export navigation still happens even for unresolved segments
       assert.equal(app.view, 'export', 'finalizeAndExport always navigates to the export screen');
     }
+  },
+  {
+    name: 'T122-T-PERF progressStats returns _progressStatsCache when view is segment to prevent O(n) Alpine flush on navigation',
+    fn(assert) {
+      const app = adjApp();
+      app.view = 'segment';
+      app._progressStatsCache = { total: 999, done: 5, pending: 994, identical: 0, majority: 0, conflict: 0, resolved: 0, withTextDiff: 0, needsReview: 0, conflictPunctOnly: 0, conflictTextOnly: 0, conflictBoth: 0 };
+      const result = app.progressStats;
+      assert.equal(result.total, 999, 'progressStats short-circuits to cache when view === segment (avoids iterating all segments on every navigation commit)');
+      assert.equal(result.done, 5, 'cached done count is returned without full recomputation');
+    }
+  },
+  {
+    name: 'T123-T-PERF adjApp declares _progressStatsCache and progressStats recomputes fully when view leaves segment',
+    fn(assert) {
+      const app = adjApp();
+      assert.equal('_progressStatsCache' in app, true, 'adjApp data object declares _progressStatsCache property for performance caching');
+      assert.equal(app._progressStatsCache, null, '_progressStatsCache starts as null before any computation');
+      app.segments = [
+        { id: '001', stripped_text: 'a', original_text: 'a', inline_elements: [], textDiffs: new Map() },
+        { id: '002', stripped_text: 'b', original_text: 'b', inline_elements: [], textDiffs: new Map() }
+      ];
+      app.adjudications = {};
+      app.originalDiffs = { '001': createEmptyPositionDiff(), '002': createEmptyPositionDiff() };
+      app._progressStatsCache = { total: 999, done: 0, pending: 999, identical: 0, majority: 0, conflict: 0, resolved: 0, withTextDiff: 0, needsReview: 0, conflictPunctOnly: 0, conflictTextOnly: 0, conflictBoth: 0 };
+      app.view = 'overview';
+      const result = app.progressStats;
+      assert.equal(result.total, 2, 'progressStats recomputes from scratch when view is overview regardless of stale cache');
+    }
+  },
+  {
+    name: 'T124-T-STRUCTURAL export preview x-if conditions guard on view === export to prevent exportPreviewParagraphs() mounting outside export view',
+    fn(assert) {
+      const allTemplates = [...document.querySelectorAll('template[x-if]')];
+      const currentTemplate = allTemplates.find(t => t.getAttribute('x-if').includes("exportPreviewMode === 'current'"));
+      const goldenTemplate = allTemplates.find(t => t.getAttribute('x-if').includes("exportPreviewMode === 'golden'"));
+      assert.equal(
+        currentTemplate !== undefined,
+        true,
+        'export preview current-mode template[x-if] exists in the DOM'
+      );
+      assert.equal(
+        !!(currentTemplate && currentTemplate.getAttribute('x-if').includes("view === 'export'")),
+        true,
+        'export preview current-mode x-if requires view === export so exportPreviewParagraphs() x-for is not mounted and does not track adjudications while in segment view'
+      );
+      assert.equal(
+        goldenTemplate !== undefined,
+        true,
+        'export preview golden-mode template[x-if] exists in the DOM'
+      );
+      assert.equal(
+        !!(goldenTemplate && goldenTemplate.getAttribute('x-if').includes("view === 'export'")),
+        true,
+        'export preview golden-mode x-if requires view === export so exportPreviewContent() textarea is not mounted and does not track adjudications while in segment view'
+      );
+    }
+  },
+  {
+    name: 'T125-T-PERF pendingSegments() caches its result against the adjudications object reference so only the first call per adjudications change performs the O(n×k) iteration — all subsequent callers in the same flush return the cached array in O(1)',
+    fn(assert) {
+      const app = adjApp();
+      app.segments = [
+        { id: '001', stripped_text: 'a', original_text: 'a', inline_elements: [], textDiffs: new Map() },
+        { id: '002', stripped_text: 'b', original_text: 'b', inline_elements: [], textDiffs: new Map() }
+      ];
+      app.adjudications = {};
+
+      const result1 = app.pendingSegments();
+      const result2 = app.pendingSegments();
+      assert.equal(result1 === result2, true, 'pendingSegments() returns the same array reference on repeated calls with the same adjudications object (cache hit — O(1) after first call)');
+
+      app.adjudications = { ...app.adjudications };
+      const result3 = app.pendingSegments();
+      assert.equal(result1 === result3, false, 'pendingSegments() recomputes and returns a new array reference when adjudications reference changes (cache miss — fresh O(n×k) pass)');
+    }
   }
 ];
 
@@ -18238,6 +18315,7 @@ function adjApp() {
     _sourceXmlDirRestoreToken: 0,
     _xmlFetchAbortController: null,
     _testConnAbortController: null,
+    _saveTimer: null,
     savedSessionTime: '',
     savedSessionProgress: '',
     hasSavedSession: false,
@@ -18246,6 +18324,7 @@ function adjApp() {
     conflictResolvedPendingSegmentIdx: null,
     conflictResolvedResolvedSegmentId: null,
     testResults: null,
+    _progressStatsCache: null,
 
     async runTests() {
       this.testResults = null;
@@ -18864,6 +18943,11 @@ function adjApp() {
       }
     },
 
+    debouncedSaveSession(delay = 800) {
+      clearTimeout(this._saveTimer);
+      this._saveTimer = setTimeout(() => this.saveSession(), delay);
+    },
+
     restoreSession(data = null) {
       const incoming = data ? this.normalizeImportedSessionPayload(data) : null;
       const raw = incoming ? JSON.stringify(incoming) : localStorage.getItem(SESSION_STORAGE_KEY);
@@ -19133,6 +19217,15 @@ function adjApp() {
     },
 
     get progressStats() {
+      if (this.view === 'segment' && this._progressStatsCache !== null) {
+        return this._progressStatsCache;
+      }
+      const result = this._computeProgressStats();
+      this._progressStatsCache = result;
+      return result;
+    },
+
+    _computeProgressStats() {
       const total = this.segments.length;
       let done = 0;
       let identical = 0;
@@ -19770,7 +19863,14 @@ function adjApp() {
     },
 
     pendingSegments() {
-      return this.segments.filter(segment => this.segmentReviewType(segment) !== 'none');
+      const raw = Alpine.raw(this);
+      if (raw._pendingCacheRef === this.adjudications) {
+        return raw._pendingCache;
+      }
+      const result = this.segments.filter(segment => this.segmentReviewType(segment) !== 'none');
+      raw._pendingCacheRef = this.adjudications;
+      raw._pendingCache = result;
+      return result;
     },
 
     segmentWorkingPunctuationStats(segmentId) {
@@ -19884,7 +19984,7 @@ function adjApp() {
       this.exportCompleted = false;
       this.normalizeSegmentFilter(segmentId);
       if (changed) {
-        this.saveSession();
+        this.debouncedSaveSession();
       }
       return changed;
     },
@@ -19989,7 +20089,7 @@ function adjApp() {
       this.fractionalInsertions = nextFractionals;
       this.exportCompleted = false;
       this.normalizeSegmentFilter(this.currentSegment?.id || segmentId);
-      this.saveSession();
+      this.debouncedSaveSession();
     },
 
     OpenSegment(segmentIdx) {
@@ -20995,7 +21095,7 @@ function adjApp() {
 
       if (!this.syncSegmentCompletion(segmentId)) {
         this.normalizeSegmentFilter(this.currentSegment?.id || segmentId);
-        this.saveSession();
+        this.debouncedSaveSession();
       }
     },
 
@@ -21035,7 +21135,7 @@ function adjApp() {
         };
         this.closePicker();
         this.exportCompleted = false;
-        this.saveSession();
+        this.debouncedSaveSession();
       } catch (error) {
         this.error = error.message;
       }
@@ -21051,7 +21151,7 @@ function adjApp() {
           [segmentId]: fractionals
         };
         this.exportCompleted = false;
-        this.saveSession();
+        this.debouncedSaveSession();
         return;
       }
 
@@ -21066,7 +21166,7 @@ function adjApp() {
       }
       if (!this.syncSegmentCompletion(segmentId)) {
         this.normalizeSegmentFilter(this.currentSegment?.id || segmentId);
-        this.saveSession();
+        this.debouncedSaveSession();
       }
     },
 
