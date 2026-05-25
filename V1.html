@@ -2418,6 +2418,12 @@
                 class="adj-xml-snippet"
                 x-text="contextPanelData.afterXmlDisplay || contextPanelData.afterXml"></pre>
             </div>
+            <a
+              x-show="contextPanelData.url"
+              :href="contextPanelData.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="adj-fsz-link">在佛寺志開啟 ↗</a>
           </div>
         </template>
       </aside>
@@ -2493,12 +2499,12 @@
       <div class="adj-toolbar adj-settings-toolbar">
         <div>
           <h3>設定</h3>
-          <p class="adj-help">本功能會儲存 XML 目錄授權並在重新整理後嘗試恢復；只有成功重新選取其他目錄才會覆蓋目前設定。</p>
         </div>
         <button class="secondary outline adj-settings-close" @click="settingsOpen = false" aria-label="關閉設定">✕</button>
       </div>
       <div class="adj-settings-section">
         <h4>XML 來源</h4>
+        <p class="adj-help">本功能會儲存 XML 目錄授權並在重新整理後嘗試恢復；只有成功重新選取其他目錄才會覆蓋目前設定。</p>
         <div class="adj-segmented-control" role="group" aria-label="XML 來源模式">
           <button
             type="button"
@@ -2621,26 +2627,13 @@
           </div>
         </div>
       </div>
+      <hr style="margin: 1.5rem 0;">
       <div class="adj-settings-section">
         <h4>佈景主題</h4>
         <div class="adj-segmented-control adj-theme-control" role="group" aria-label="佈景主題">
           <button type="button" :class="{ selected: themeMode === 'light' }" :aria-pressed="themeMode === 'light'" @click="setThemeMode('light')">淺色</button>
           <button type="button" :class="{ selected: themeMode === 'dark' }" :aria-pressed="themeMode === 'dark'" @click="setThemeMode('dark')">深色</button>
           <button type="button" class="adj-span-full" :class="{ selected: themeMode === 'system' }" :aria-pressed="themeMode === 'system'" @click="setThemeMode('system')">跟隨系統</button>
-        </div>
-      </div>
-      <div class="adj-settings-section">
-        <h4>KWIC 顯示</h4>
-        <div class="adj-segmented-control" role="group" aria-label="KWIC 顯示模式">
-          <button type="button" :class="{ selected: kwicDisplayMode === 'punctuated' }" :aria-pressed="kwicDisplayMode === 'punctuated'" @click="setKwicDisplayMode('punctuated')">標點文</button>
-          <button type="button" :class="{ selected: kwicDisplayMode === 'pure' }" :aria-pressed="kwicDisplayMode === 'pure'" @click="setKwicDisplayMode('pure')">純文</button>
-        </div>
-      </div>
-      <div class="adj-settings-section">
-        <h4>對齊遺漏回報</h4>
-        <div class="adj-segmented-control" role="group" aria-label="對齊遺漏回報顯示">
-          <button type="button" :class="{ selected: showAlignmentDropReport }" :aria-pressed="showAlignmentDropReport" @click="setAlignmentDropReportVisibility(true)">顯示</button>
-          <button type="button" :class="{ selected: !showAlignmentDropReport }" :aria-pressed="!showAlignmentDropReport" @click="setAlignmentDropReportVisibility(false)">隱藏</button>
         </div>
       </div>
       <hr style="margin: 1.5rem 0;">
@@ -2657,6 +2650,21 @@
       </div>
       <hr style="margin: 1.5rem 0;">
       <button class="secondary outline" @click="settingsOpen = false; resetToLoad()">重新載入（回到載入頁）</button>
+      <hr style="margin: 1.5rem 0;">
+      <div class="adj-settings-section">
+        <h4>KWIC 顯示</h4>
+        <div class="adj-segmented-control" role="group" aria-label="KWIC 顯示模式">
+          <button type="button" :class="{ selected: kwicDisplayMode === 'punctuated' }" :aria-pressed="kwicDisplayMode === 'punctuated'" @click="setKwicDisplayMode('punctuated')">標點文</button>
+          <button type="button" :class="{ selected: kwicDisplayMode === 'pure' }" :aria-pressed="kwicDisplayMode === 'pure'" @click="setKwicDisplayMode('pure')">純文</button>
+        </div>
+      </div>
+      <div class="adj-settings-section">
+        <h4>對齊遺漏回報</h4>
+        <div class="adj-segmented-control" role="group" aria-label="對齊遺漏回報顯示">
+          <button type="button" :class="{ selected: showAlignmentDropReport }" :aria-pressed="showAlignmentDropReport" @click="setAlignmentDropReportVisibility(true)">顯示</button>
+          <button type="button" :class="{ selected: !showAlignmentDropReport }" :aria-pressed="!showAlignmentDropReport" @click="setAlignmentDropReportVisibility(false)">隱藏</button>
+        </div>
+      </div>
       <hr style="margin: 1.5rem 0;">
       <button type="button" class="secondary outline adj-settings-action" @click="runTests()">執行內建測試</button>
       <div class="adj-test-results" x-show="testResults !== null">
@@ -9019,7 +9027,7 @@ function extractXmlContext(node) {
 
   const parent = element.parentElement;
   const siblings = parent
-    ? Array.from(parent.children).filter(child => ['p', 'head', 'item', 'lg'].includes(child.localName))
+    ? Array.from(parent.children).filter(child => ['p', 'head', 'item', 'lg', 'list'].includes(child.localName))
     : [element];
   const index = Math.max(0, siblings.indexOf(element));
   const before = siblings.slice(Math.max(0, index - 2), index).map(serializeXmlNode).join('\n');
@@ -13776,6 +13784,7 @@ const adjudicationTestSuites = [
     name: 'T038-T-INTEGRATION context panel',
     async fn(assert) {
       const app = adjApp();
+      app.xmlSourceMode = 'local';
       app.job = { sourceFile: 'y001/y001_01.xml' };
       app.segments = [{ id: '001', stripped_text: '甲乙', original_text: '甲乙', xpath: '//*[@id="target"]', inline_elements: [{ xpath: '//*[@id="target"]' }] }];
       app.sourceXmlDirHandle = {
@@ -13809,6 +13818,7 @@ const adjudicationTestSuites = [
     name: 'T038ab-T-INTEGRATION rail page button opens the current segment FSZ page outside the panel',
     async fn(assert) {
       const app = adjApp();
+      app.xmlSourceMode = 'local';
       app.job = { sourceFile: 'y001/y001_01.xml' };
       app.segments = [{ id: '001', stripped_text: '甲乙', original_text: '甲乙', xpath: '//*[@id="target"]', inline_elements: [{ xpath: '//*[@id="target"]' }] }];
       app.filter = 'all';
@@ -13850,6 +13860,7 @@ const adjudicationTestSuites = [
     name: 'T038aa-T-INTEGRATION context panel resolves default-namespace named xpath steps',
     async fn(assert) {
       const app = adjApp();
+      app.xmlSourceMode = 'local';
       app.job = { sourceFile: 'y109/y109_02.xml' };
       app.segments = [{
         id: '007',
@@ -14070,6 +14081,7 @@ const adjudicationTestSuites = [
         await pickerApp.selectXmlDirectory();
 
         const restoredApp = adjApp();
+        restoredApp.xmlSourceMode = 'local';
         restoredApp.loadPersistedXmlDirectoryHandle = async () => persistedHandle;
         restoredApp.getXmlDirectoryPermission = async () => 'granted';
 
@@ -14117,6 +14129,7 @@ const adjudicationTestSuites = [
       };
 
       const app = adjApp();
+      app.xmlSourceMode = 'local';
       app.loadPersistedXmlDirectoryHandle = async () => xmlHandle;
       app.getXmlDirectoryPermission = async (handle, requestIfNeeded = false) => {
         permissionCalls.push(requestIfNeeded ? 'request' : 'query');
@@ -14402,6 +14415,11 @@ const adjudicationTestSuites = [
         githubApp.job = { sourceFile: 'y001/y001_01.xml', sourceMarkers: 'y001_01_markers.json' };
         githubApp.segments = [segment];
         githubApp.xmlSourceMode = 'github';
+        githubApp.githubUrl = '';
+        githubApp.githubOwner = '';
+        githubApp.githubRepo = '';
+        githubApp.githubBranch = '';
+        githubApp.githubRootPath = '';
         let fetchCalls = 0;
         window.fetch = async () => {
           fetchCalls += 1;
@@ -14462,27 +14480,40 @@ const adjudicationTestSuites = [
       app.githubRepo = 'fosizhi';
       app.githubBranch = 'main';
       app.githubRootPath = 'xml';
-      app.githubToken = 'secret-token';
       app.job = { sourceMarkers: 'y001_01_markers.json' };
 
       const originalFetch = window.fetch;
       try {
+        // Sub-scenario A: no token → raw URL attempted first (public repo happy path)
         let calls = [];
+        app.githubToken = '';
         window.fetch = async (url, options = {}) => {
           calls.push({ url, options });
           return makeResponse({ ok: true, status: 200, text: '<root/>' });
         };
 
         const rawXml = await app.fetchXmlFromGithub('y001/y001_01.xml', { signal: new AbortController().signal });
-        assert.equal(rawXml, '<root/>', 'raw-first happy path returns XML text');
-        assert.equal(calls[0].url, 'https://raw.githubusercontent.com/DILA-edu/fosizhi/main/xml/y/y001/y001_01.xml', 'raw URL is attempted first using the markers-derived XML path');
+        assert.equal(rawXml, '<root/>', 'raw-first happy path returns XML text when no token');
+        assert.equal(calls[0].url, 'https://raw.githubusercontent.com/DILA-edu/fosizhi/main/xml/y/y001/y001_01.xml', 'raw URL is attempted first using the markers-derived XML path when no token');
 
+        // Sub-scenario B: token set → Contents API used directly (no raw URL request)
+        calls = [];
+        app.githubToken = 'secret-token';
+        window.fetch = async (url, options = {}) => {
+          calls.push({ url, options });
+          return makeResponse({ ok: true, status: 200, jsonData: { encoding: 'base64', content: btoa('<root/>') } });
+        };
+
+        const tokenXml = await app.fetchXmlFromGithub('y001/y001_01.xml', { signal: new AbortController().signal });
+        assert.equal(tokenXml, '<root/>', 'token mode returns decoded XML via Contents API');
+        assert.equal(calls[0].url.includes('/contents/xml/y/y001/y001_01.xml?ref=main'), true, 'token mode targets Contents API directly without a raw URL attempt');
+        assert.equal(calls.some(c => c.url.includes('raw.githubusercontent.com')), false, 'no raw URL request is made when a token is configured');
+        assert.equal(calls[0].options.headers.Authorization, 'token secret-token', 'Contents API request sends the configured token');
+
+        // Sub-scenario C: token set, Contents API 401 → auth error surfaced directly
         calls = [];
         window.fetch = async (url, options = {}) => {
           calls.push({ url, options });
-          if (calls.length === 1) {
-            return makeResponse({ ok: false, status: 401 });
-          }
           return makeResponse({ ok: false, status: 401 });
         };
 
@@ -14492,27 +14523,10 @@ const adjudicationTestSuites = [
         } catch (error) {
           authMessage = error.message;
         }
-        assert.includes(authMessage, 'Authentication failed (401)', '401 fallback failures surface a dedicated auth message');
-        assert.equal(calls.length >= 2, true, 'raw 401 triggers a Contents API fallback request');
+        assert.includes(authMessage, 'Authentication failed (401)', '401 Contents API response surfaces a dedicated auth message');
+        assert.equal(calls.some(c => c.url.includes('raw.githubusercontent.com')), false, 'auth failure is detected from Contents API without a preceding raw URL attempt');
 
-        calls = [];
-        window.fetch = async (url, options = {}) => {
-          calls.push({ url, options });
-          if (calls.length === 1) {
-            return makeResponse({ ok: false, status: 401 });
-          }
-          return makeResponse({
-            ok: true,
-            status: 200,
-            jsonData: { encoding: 'base64', content: btoa('<root/>') }
-          });
-        };
-
-        const fallbackXml = await app.fetchXmlFromGithub('y001/y001_01.xml', { signal: new AbortController().signal });
-        assert.equal(fallbackXml, '<root/>', 'Contents API fallback decodes base64 XML');
-        assert.equal(calls[1].url.includes('/contents/xml/y/y001/y001_01.xml?ref=main'), true, 'fallback request targets the Contents API URL');
-        assert.equal(calls[1].options.headers.Authorization, 'token secret-token', 'fallback request sends the configured token');
-
+        // Sub-scenario D: token set, multiple candidates via Contents API, first two 404, third succeeds
         calls = [];
         app.job = { sourceMarkers: 'y109_02_markers.json' };
         window.fetch = async (url, options = {}) => {
@@ -14520,18 +14534,96 @@ const adjudicationTestSuites = [
           if (url.includes('/branches/main')) {
             return makeResponse({ ok: true, status: 200, jsonData: { name: 'main' } });
           }
-          // First two raw candidates (3-level and series-letter) return 404; third succeeds
+          // First two candidates (3-level and series-letter) not found via Contents API
           if (url.includes('xml/y/y109/y109_02.xml') || url.includes('xml/y/y109_02.xml')) {
             return makeResponse({ ok: false, status: 404 });
           }
-          return makeResponse({ ok: true, status: 200, text: '<root fallback=\"1\"/>' });
+          return makeResponse({ ok: true, status: 200, jsonData: { encoding: 'base64', content: btoa('<root fallback="1"/>') } });
         };
 
         const fallbackPathXml = await app.fetchXmlFromGithub('y109/y109_02.xml', { signal: new AbortController().signal });
-        assert.equal(fallbackPathXml, '<root fallback=\"1\"/>', '404 on first two candidates falls through to the source_file-based candidate');
-        assert.equal(calls[0].url, 'https://raw.githubusercontent.com/DILA-edu/fosizhi/main/xml/y/y109/y109_02.xml', 'first candidate uses the 3-level markers-derived path');
-        assert.equal(calls[3].url, 'https://raw.githubusercontent.com/DILA-edu/fosizhi/main/xml/y/y109_02.xml', 'second candidate uses the series-letter edition folder path (raw at index 3 after Contents API + branch check for first candidate)');
-        assert.equal(calls[6].url, 'https://raw.githubusercontent.com/DILA-edu/fosizhi/main/xml/y109/y109_02.xml', 'third candidate retries with root+source_file fallback (raw at index 6 after Contents API + branch check for second candidate)');
+        assert.equal(fallbackPathXml, '<root fallback="1"/>', '404 on first two candidates falls through to the source_file-based candidate');
+        assert.equal(calls.some(c => c.url.includes('raw.githubusercontent.com')), false, 'no raw URL attempts when token is set for multi-candidate case');
+        assert.equal(calls[0].url.includes('/contents/xml/y/y109/y109_02.xml'), true, 'first candidate uses the markers-derived 3-level path via Contents API');
+      } finally {
+        window.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'T066b-T-UNIT 005 resolveXmlContextForSegment uses segment.xpath for context lookup (not inline_elements[0].xpath)',
+    async fn(assert) {
+      const makeResponse = ({ ok = true, status = 200, jsonData = {} } = {}) => ({
+        ok,
+        status,
+        statusText: 'OK',
+        headers: new Headers(),
+        text: async () => '',
+        json: async () => jsonData
+      });
+      // Segment whose segment.xpath node EXISTS in the XML, but inline_elements[0].xpath does NOT
+      const segment = {
+        id: '001',
+        stripped_text: 'test',
+        original_text: 'test',
+        xpath: '/*/*[1]',              // points to <p> which exists in the XML below
+        inline_elements: [{ xpath: '/*/*[1]/seg[1]' }]  // points to non-existent <seg> child
+      };
+      const originalFetch = window.fetch;
+      try {
+        const app = adjApp();
+        app.xmlSourceMode = 'github';
+        app.githubUrl = 'https://github.com/DILA-edu/fosizhi/tree/main/xml';
+        app.githubOwner = 'DILA-edu';
+        app.githubRepo = 'fosizhi';
+        app.githubBranch = 'main';
+        app.githubRootPath = 'xml';
+        app.githubToken = 'secret-token';
+        app.job = { sourceFile: 'y001/y001_01.xml', sourceMarkers: 'y001_01_markers.json' };
+        app.segments = [segment];
+        // XML has <p> at /*/*[1] but NO <seg> child inside <p>
+        window.fetch = async () => makeResponse({
+          ok: true,
+          status: 200,
+          jsonData: { encoding: 'base64', content: btoa('<root><p>test</p></root>') }
+        });
+        await app.resolveXmlContextForSegment('001');
+        assert.equal(app.contextError, '', 'resolveXmlContextForSegment succeeds when segment.xpath exists even if inline_elements[0].xpath does not');
+        assert.notEqual(app.contextPanelData, null, 'context panel data is populated when segment.xpath is found');
+      } finally {
+        window.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'T066c-T-UNIT 005 fetchXmlFromGithub uses Contents API directly when token is set (no raw URL 404 noise)',
+    async fn(assert) {
+      const app = adjApp();
+      app.githubOwner = 'DILA-edu';
+      app.githubRepo = 'fosizhi';
+      app.githubBranch = 'main';
+      app.githubRootPath = 'xml';
+      app.githubToken = 'secret-token';
+      app.job = { sourceFile: 'y001/y001_01.xml', sourceMarkers: 'y001_01_markers.json' };
+      const originalFetch = window.fetch;
+      try {
+        let rawCallMade = false;
+        window.fetch = async (url, options = {}) => {
+          if (url.includes('raw.githubusercontent.com')) {
+            rawCallMade = true;
+          }
+          return {
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            headers: new Headers(),
+            text: async () => '',
+            json: async () => ({ encoding: 'base64', content: btoa('<root/>') })
+          };
+        };
+        const xml = await app.fetchXmlFromGithub('y001/y001_01.xml', { signal: new AbortController().signal });
+        assert.equal(xml, '<root/>', 'fetchXmlFromGithub returns XML via Contents API when token is set');
+        assert.equal(rawCallMade, false, 'no raw.githubusercontent.com request is made when token is set');
       } finally {
         window.fetch = originalFetch;
       }
@@ -14721,12 +14813,12 @@ const adjudicationTestSuites = [
         assert.includes(app.contextError, 'Network error', 'network failures surface a dedicated network message');
 
         app = createGithubApp();
-        window.fetch = async () => makeResponse({ ok: true, status: 200, text: '<bad<xml' });
+        window.fetch = async () => makeResponse({ ok: true, status: 200, jsonData: { encoding: 'base64', content: btoa('<bad<xml') } });
         await app.resolveXmlContextForSegment('001');
         assert.includes(app.contextError, 'XML parse error', 'invalid XML surfaces a parser error message');
 
         app = createGithubApp();
-        window.fetch = async () => makeResponse({ ok: true, status: 200, text: '<root><p id="target">甲乙</p></root>' });
+        window.fetch = async () => makeResponse({ ok: true, status: 200, jsonData: { encoding: 'base64', content: btoa('<root><p id="target">text</p></root>') } });
         window.evaluateXmlXPath = () => {
           throw new Error('forced xpath failure');
         };
@@ -17740,13 +17832,12 @@ const adjudicationTestSuites = [
   },
 
   {
-    name: 'T121-T-STRUCTURAL 005 context panel must not contain adj-fsz-link or 在佛寺志開啟 inline link',
+    name: 'T121-T-STRUCTURAL 005 context panel contains adj-fsz-link anchor with :href binding (Copilot review comment 1)',
     fn(assert) {
       const panelSnippet = document.querySelector('aside.adj-context-panel')?.outerHTML || '';
-      assert.equal(panelSnippet.includes('adj-fsz-link'), false, 'context panel must not contain adj-fsz-link element');
-      assert.equal(panelSnippet.includes('在佛寺志開啟'), false, 'context panel must not contain 在佛寺志開啟 inline link text');
-      const styleText = document.querySelector('style')?.textContent || '';
-      assert.equal(styleText.includes('.adj-fsz-link'), false, 'adj-fsz-link CSS rule must be removed');
+      assert.equal(panelSnippet.includes('adj-fsz-link'), true, 'context panel must contain adj-fsz-link anchor element');
+      assert.equal(panelSnippet.includes('在佛寺志開啟'), true, 'context panel must contain 在佛寺志開啟 link text');
+      assert.equal(panelSnippet.includes('x-show="contextPanelData.url"'), true, 'fsz link must use x-show to hide when url is absent');
     }
   },
   {
@@ -17957,6 +18048,23 @@ const adjudicationTestSuites = [
       const result3 = app.pendingSegments();
       assert.equal(result1 === result3, false, 'pendingSegments() recomputes and returns a new array reference when adjudications reference changes (cache miss — fresh O(n×k) pass)');
     }
+  },
+
+  {
+    name: 'T126-T-UNIT extractXmlContext includes adjacent <list> siblings in before/after context (p followed by list elements — see segment 008 / 009–012 scenario)',
+    fn(assert) {
+      const parser = new DOMParser();
+      const xml = parser.parseFromString(
+        '<root><div><p>前段</p><p id="target">目標段</p><list><item>第一項</item></list><list><item>第二項</item></list></div></root>',
+        'text/xml'
+      );
+      const target = xml.getElementById('target');
+      const context = extractXmlContext(target);
+
+      assert.includes(context.beforeXml, '前段', 'preceding <p> appears in beforeXml');
+      assert.includes(context.afterXml, '<list>', 'adjacent <list> element appears in afterXml when list is included in the sibling filter');
+      assert.equal(context.afterXml.includes('<list>') || context.afterXml.includes('&lt;list'), true, '<list> element is serialized into afterXml');
+    }
   }
 ];
 
@@ -17983,6 +18091,11 @@ async function runAdjudicationDomainTests() {
       const expected = [...expectedValues].sort((left, right) => left - right);
       if (JSON.stringify(actual) !== JSON.stringify(expected)) {
         throw new Error(`${label} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+      }
+    },
+    notEqual(actual, expected, label) {
+      if (actual === expected) {
+        throw new Error(`${label} — expected values to differ, but both were ${JSON.stringify(actual)}`);
       }
     },
     throws(fn, errorName, label) {
@@ -18110,11 +18223,21 @@ function getReleaseNotesHtml() {
 
       <h4>🎯 使用者故事 3 — XML 文脈預覽（Priority P3）</h4>
       <ul>
-        <li><strong>佛寺志↗ 按鈕</strong>：在段落右側邊欄開啟 XML 文脈面板
+        <li><strong>本機目錄模式</strong>：在段落右側邊欄開啟 XML 文脈面板
           <ul>
             <li>以 File System Access API 選取 XML 目錄，透過 IndexedDB 持久化目錄控制代碼，頁面重載後自動恢復</li>
             <li>解析 TEI/CBETA 預設命名空間 XML，XPath 以命名空間感知方式解析</li>
             <li>面板顯示序列化 XML 片段（前後文節點），去除重複 <code>xmlns</code> 宣告以利閱讀</li>
+          </ul>
+        </li>
+        <li><strong>GitHub 倉庫模式（FR-012, Feature 005）</strong>：設定欄新增 XML 來源切換器（本機目錄 / GitHub 倉庫）
+          <ul>
+            <li>貼上 GitHub 倉庫 URL 自動解析 owner / repo / branch（parse-on-paste）</li>
+            <li>PAT Token 欄位（顯示 / 隱藏 / 清除），持久化至 localStorage</li>
+            <li>「測試連線」按鈕：驗證 token 身份、倉庫存取、分支、速率限制；顯示診斷表格</li>
+            <li>無 token 時以 raw CDN 優先，401 / 403 / 429 時自動改走 Contents API；有 token 時直接走 Contents API 避免私有倉庫產生 404 console 雜訊</li>
+            <li>面板內新增「在佛寺志開啟 ↗」連結，可直接跳轉對應 FSZ 網頁</li>
+            <li>XPath 查找錯誤時顯示實際解析到的 GitHub 路徑，方便除錯</li>
           </ul>
         </li>
         <li><strong>佛寺志網頁 按鈕</strong>：直接開啟對應佛寺志網頁（<code>book</code> + <code>cpage</code> 自動推算）</li>
@@ -18146,6 +18269,13 @@ function getReleaseNotesHtml() {
         <li><strong>設定欄手動控制</strong>：立即儲存、匯出進度檔、匯入進度檔、清除進度（四個全寬按鈕）</li>
         <li>成功匯出後自動清除工作階段，避免下次重複恢復</li>
         <li>localStorage 配額溢出時以 inline 錯誤提示，不中斷工作</li>
+        <li><strong>草稿匯入（Feature 004）</strong>：載入畫面新增「步驟三：載入草稿（選填）」卡片，支援直接從檔案匯入裁決進度
+          <ul>
+            <li>可在空載入畫面直接匯入進度檔（<code>importSessionFromFile</code>），無需先上傳 markers</li>
+            <li>草稿指紋驗證（<code>djb2Hash</code> + <code>computeJobFingerprint</code>）：markers 不符時出現「model-mismatch」警告對話框，可選擇繼續使用或放棄草稿</li>
+            <li><code>hasSavedSession</code> 旗標於每次儲存、清除後即時同步</li>
+          </ul>
+        </li>
       </ul>
 
       <h4>🎨 介面與體驗改進</h4>
@@ -18156,13 +18286,33 @@ function getReleaseNotesHtml() {
         <li><strong>選字選單暖琥珀標題列（FR-023）</strong>：插入選單頭部使用暖琥珀色調，深色模式自動調整</li>
         <li><strong>內建測試面板（FR-024）</strong>：設定欄底部「執行內建測試」按鈕，結果顯示於欄內（通過 / 失敗計數 + 失敗清單）</li>
         <li><strong>版面延續 Preview5（FR-016）</strong>：載入、總覽、段落三個畫面主欄等寬；右側邊欄按鈕大小一致；設定鈕在版本說明鈕左方</li>
+        <li><strong>插入標點 UX 改進</strong>：選字選單（Picker）明確標示目前為「編輯已插入標點」模式，支援修改或移除；插入標點正確顯示於比對標記之前</li>
+      </ul>
+
+      <h4>🐛 Bug 修復</h4>
+      <ul>
+        <li><strong>LCS 未匹配槽位晉升</strong>：<code>alignCandidateCharsToOriginalSlots</code> 中未對齊的候選字元現在正確填入原始槽位，消除對齊偏移問題</li>
+        <li><strong>插入標點位置</strong>（<code>pickerResolvedPlacement</code>）：插入的標點現在出現於同位置的比對標記之前，而非之後</li>
+        <li><strong>匯出時的無條件提交</strong>：<code>finalizeAndExport</code> 不再對尚有未解衝突的段落執行 <code>commitSegmentEdit</code>，防止部分裁決結果被意外寫入</li>
+        <li><strong>XPath 文脈查找</strong>：<code>resolveXmlContextForSegment</code> 改以 <code>segment.xpath</code>（而非 <code>inline_elements[0].xpath</code>）進行 XML 節點定位，修正 token 模式下私有倉庫的 XPath 查找失敗問題</li>
+      </ul>
+
+      <h4>⚡ 效能改善</h4>
+      <ul>
+        <li><strong><code>progressStats</code> 快取（T122–T123）</strong>：<code>view=segment</code> 期間以 <code>_progressStatsCache</code> 回傳快取值，每次段落導航 Alpine flush 從 O(n×k) 降至 O(1)</li>
+        <li><strong>匯出預覽守衛（T124）</strong>：<code>x-if="view === 'export'"</code> 包裹 <code>exportPreviewParagraphs()</code>，防止 557 項 <code>x-for</code> 在匯出畫面外持續追蹤 <code>adjudications</code></li>
+        <li><strong><code>pendingSegments()</code> 參考快取（T125）</strong>：以 <code>adjudications</code> 物件參考作為快取鍵，每次 flush 從 358 次 O(n×k) 呼叫降至 1 次</li>
+        <li>實測：557 段工作的段落導航延遲從約 <strong>41 秒</strong>降至 <strong>75 毫秒</strong></li>
       </ul>
 
       <h4>🔬 測試覆蓋</h4>
       <ul>
-        <li>超過 160 項自動化測試（TDD / BDD），涵蓋所有使用者故事與 FR 需求</li>
+        <li>超過 210 項自動化測試（TDD / BDD），涵蓋所有使用者故事與 FR 需求</li>
         <li>T047 端對端迴歸：50 段合成資料完整裁決匯出 563 ms；500 段非序列導航最大延遲 32 ms</li>
-        <li>Preview5 的 556 項既有測試（CJK 異體字、LCS、位置比對）零迴歸</li>
+        <li>Feature 004 草稿匯入：T113（BDD 空畫面直接匯入）、T114（無指紋驗證恢復）等迴歸測試</li>
+        <li>Feature 005 GitHub 模式：T066b（segment.xpath 查找）、T119（private repo Contents API fallback）、T120（FSZ URL fallback）、T121（面板連結結構）等</li>
+        <li>內建測試執行器（hermetic runner）：每次執行前快照並還原 localStorage XML 來源設定，確保測試環境與瀏覽器持久化設定隔離</li>
+        <li>Preview5 的 559 項既有測試（CJK 異體字、LCS、位置比對）零迴歸</li>
       </ul>
 
       <hr style="margin: 2rem 0; border: none; border-top: 1px solid #ccc;">
@@ -18203,10 +18353,10 @@ function getReleaseNotesHtml() {
 
       <h4>⚠️ 已知限制（V1）</h4>
       <ul>
-        <li><strong>瀏覽器相容性</strong>：File System Access API（XML 目錄選取）需 Chrome / Edge 86+；Firefox 目前不支援，XML 文脈功能將顯示提示</li>
+        <li><strong>本機 XML 模式瀏覽器相容性</strong>：File System Access API（XML 目錄選取）需 Chrome / Edge 86+；Firefox 目前不支援，本機 XML 文脈功能將顯示提示。GitHub 倉庫模式不受此限制，所有瀏覽器均可使用</li>
         <li><strong>IndexedDB</strong>：部分隱私瀏覽模式可能無法持久化 XML 目錄控制代碼</li>
         <li><strong>儲存空間限制</strong>：localStorage 容量約 5–10 MB；超大工作階段可能觸發 QuotaExceededError（工具會顯示警示，不中斷工作）</li>
-        <li><strong>無後端</strong>：所有檔案存取均在瀏覽器本機進行，無法存取遠端路徑</li>
+        <li><strong>GitHub 速率限制</strong>：無 token 時 Contents API 上限 60 次 / 小時；設定 PAT Token 後提升至 5,000 次 / 小時</li>
       </ul>
 
       <h4>🔧 技術規格</h4>
@@ -18718,27 +18868,29 @@ function adjApp() {
       };
 
       const fetchGithubPath = async filePath => {
-        const rawUrl = toRawUrl(owner, repo, branch, filePath);
         const contentsUrl = toContentsApiUrl(owner, repo, branch, filePath);
-        const rawResponse = await fetchWithNetworkHandling(rawUrl);
-        if (rawResponse.ok) {
-          this._lastGithubResolvedPath = filePath;
-          return rawResponse.text();
-        }
-        if (rawResponse.status === 404) {
-          if (!token) {
+        if (!token) {
+          // No token: try raw URL first (works for public repositories).
+          const rawUrl = toRawUrl(owner, repo, branch, filePath);
+          const rawResponse = await fetchWithNetworkHandling(rawUrl);
+          if (rawResponse.ok) {
+            this._lastGithubResolvedPath = filePath;
+            return rawResponse.text();
+          }
+          if (rawResponse.status === 404) {
             throw await notFoundError(filePath);
           }
-          // With a token, private repos return 404 on raw.githubusercontent.com instead of 401.
-          // Fall through to the Contents API to distinguish "private file exists" from "file absent".
-        } else if (![401, 403, 429].includes(rawResponse.status)) {
-          const rateMessage = this.githubRateLimitMessage(rawResponse.headers);
-          if (rateMessage) {
-            throw new Error(rateMessage);
+          if (![401, 403, 429].includes(rawResponse.status)) {
+            const rateMessage = this.githubRateLimitMessage(rawResponse.headers);
+            if (rateMessage) {
+              throw new Error(rateMessage);
+            }
+            throw new Error(`GitHub raw fetch failed (${rawResponse.status})`);
           }
-          throw new Error(`GitHub raw fetch failed (${rawResponse.status})`);
+          // 401/403/429: fall through to Contents API below.
         }
-
+        // Token set: use Contents API directly to avoid spurious 404 console errors from private repos.
+        // Also reached here when no token and raw returned 401/403/429.
         const contentsResponse = await fetchWithNetworkHandling(contentsUrl, { headers });
         const contentsRateMessage = this.githubRateLimitMessage(contentsResponse.headers);
         if (contentsRateMessage) {
@@ -21310,7 +21462,7 @@ function adjApp() {
       }
 
       const sourceFile = this.job?.sourceFile || '';
-      const xpath = segment.inline_elements?.[0]?.xpath || segment.xpath;
+      const xpath = segment.xpath;
 
       if (this.xmlSourceMode === 'github') {
         const githubUrl = String(this.githubUrl || '').trim();
@@ -21340,7 +21492,8 @@ function adjApp() {
           const hasParserError = xmlDoc.getElementsByTagName('parsererror').length > 0
             || xmlDoc.getElementsByTagNameNS('*', 'parsererror').length > 0;
           if (hasParserError) {
-            throw new Error(`XML parse error — the file at ${sourceFile} is not valid XML`);
+            const fetchedPath = this._lastGithubResolvedPath || sourceFile;
+            throw new Error(`XML parse error — the file at ${fetchedPath} is not valid XML`);
           }
 
           let node = null;
