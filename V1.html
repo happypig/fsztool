@@ -2287,9 +2287,10 @@
               </div>
               <div class="adj-popup-hint">文字版本參考</div>
               <template x-for="vote in popupTextDiffVotes()" :key="vote.model">
-                <div class="selection-popup-item" :class="vote.rowClass" @mouseenter="switchPopupKwicVersion(vote.model)">
+                <button type="button" class="selection-popup-item adj-popup-choice" :class="[vote.rowClass, vote.selected ? 'selected' : '']" @mouseenter="switchPopupKwicVersion(vote.model)" @click="resolveTextDiffVote(vote)">
                   <span><kbd x-text="vote.shortcut"></kbd> <span x-text="vote.model"></span>: <span class="marker marker-textmismatch" :class="vote.markerClass" style="margin: 0 4px;" x-text="vote.value"></span></span>
-                </div>
+                  <span x-show="vote.selected">✓</span>
+                </button>
               </template>
             </div>
           </template>
@@ -8341,11 +8342,15 @@ function buildInlineViewHtml(segment, positionDiff, fractionalInsertions, insert
     });
 
     (boundaryTextDiffs.get(boundary) || []).forEach(entry => {
-      const classes = ['marker-textmismatch', `textdiff-${entry.category}`];
+      const isResolved = entry.selected != null;
+      const classes = [isResolved ? 'marker-textmismatch-resolved' : 'marker-textmismatch', `textdiff-${entry.category}`];
+      const displayValue = isResolved
+        ? (getTextDiffValue(entry, entry.selected) || '∅')
+        : getTextDiffDisplayValue(entry);
       const title = getTextDiffValueEntries(entry)
         .map(([model, value]) => `${model}: ${value || '∅'}`)
         .join(' | ');
-      html += `<span class="${classes.join(' ')}" data-text-diff-key="${escapeHtml(entry.key || formatBoundaryTextDiffKey(entry.basePosition, entry.slotIndex))}" title="${escapeHtml(title)}">${escapeHtml(getTextDiffDisplayValue(entry))}</span>`;
+      html += `<span class="${classes.join(' ')}" data-text-diff-key="${escapeHtml(entry.key || formatBoundaryTextDiffKey(entry.basePosition, entry.slotIndex))}" title="${escapeHtml(title)}">${escapeHtml(displayValue)}</span>`;
     });
 
     beforeCharInsertions.forEach(event => {
@@ -8361,14 +8366,18 @@ function buildInlineViewHtml(segment, positionDiff, fractionalInsertions, insert
       } else {
         const textDiff = textDiffs.get(boundary);
         if (textDiff) {
-          const classes = ['marker-textmismatch', `textdiff-${textDiff.category}`];
+          const isResolved = textDiff.selected != null;
+          const classes = [isResolved ? 'marker-textmismatch-resolved' : 'marker-textmismatch', `textdiff-${textDiff.category}`];
           if (insertionMode) {
             classes.push('char-insertable');
           }
+          const displayChar = isResolved
+            ? (getTextDiffValue(textDiff, textDiff.selected) || textDiff.baseChar || char)
+            : (textDiff.baseChar || char);
           const title = getTextDiffValueEntries(textDiff)
             .map(([model, value]) => `${model}: ${value || '∅'}`)
             .join(' | ');
-          html += `<span class="${classes.join(' ')}" data-base-offset="${boundary + 1}" data-text-diff-index="${boundary}" data-text-diff-key="${escapeHtml(textDiff.key || formatBaseTextDiffKey(boundary))}" title="${escapeHtml(title)}">${escapeHtml(textDiff.baseChar || char)}</span>`;
+          html += `<span class="${classes.join(' ')}" data-base-offset="${boundary + 1}" data-text-diff-index="${boundary}" data-text-diff-key="${escapeHtml(textDiff.key || formatBaseTextDiffKey(boundary))}" title="${escapeHtml(title)}">${escapeHtml(displayChar)}</span>`;
         } else if (insertionMode) {
           html += `<span class="char-insertable" data-base-offset="${boundary + 1}">${escapeHtml(char)}</span>`;
         } else {
@@ -9935,6 +9944,93 @@ const adjudicationTestSuites = [
       app.insertionMode = false;
       const normalHtml = app.renderCurrentInlineViewHtml();
       assert.equal(normalHtml.includes('marker-textmismatch textdiff-conflict char-insertable'), false, 'normal mode does not keep insertable class on text diff spans');
+    }
+  },
+  {
+    name: 'T013d-T-BDD renderCurrentInlineViewHtml uses marker-textmismatch-resolved class and selected value after base text diff is resolved',
+    fn(assert) {
+      const app = adjApp();
+      app.segments = [{
+        id: 'seg-001',
+        stripped_text: '甲乙丙',
+        original_text: '甲乙丙',
+        inline_elements: [],
+        textDiffs: new Map([
+          [1, {
+            index: 1,
+            category: 'conflict',
+            baseChar: '乙',
+            dominantValue: '乙',
+            voteCount: 1,
+            values: new Map([['claude', '乙'], ['gemini', '已'], ['gpt', '矣']])
+          }]
+        ]),
+        boundaryTextDiffs: new Map()
+      }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': createEmptyPositionDiff() };
+      app.positionMaps = { 'seg-001': createEmptyPositionDiff() };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      const unresolvedHtml = app.renderCurrentInlineViewHtml();
+      assert.includes(unresolvedHtml, 'marker-textmismatch textdiff-conflict', 'unresolved base text diff uses marker-textmismatch class');
+      assert.equal(unresolvedHtml.includes('marker-textmismatch-resolved'), false, 'unresolved base text diff does not use resolved class');
+
+      // Resolve the text diff by setting selected
+      app.segments[0].textDiffs.get(1).selected = 'gemini';
+
+      const resolvedHtml = app.renderCurrentInlineViewHtml();
+      assert.includes(resolvedHtml, 'marker-textmismatch-resolved textdiff-conflict', 'resolved base text diff uses marker-textmismatch-resolved class');
+      assert.equal(resolvedHtml.includes('>已<'), true, 'resolved base text diff displays the selected model\'s character value');
+      assert.equal(resolvedHtml.includes('marker-textmismatch textdiff-conflict'), false, 'resolved base text diff no longer uses unresolved marker class');
+    }
+  },
+  {
+    name: 'T013e-T-BDD renderCurrentInlineViewHtml uses marker-textmismatch-resolved class and selected value after boundary text diff is resolved',
+    fn(assert) {
+      const app = adjApp();
+      app.segments = [{
+        id: 'seg-001',
+        stripped_text: '甲乙',
+        original_text: '甲乙',
+        inline_elements: [],
+        textDiffs: new Map(),
+        boundaryTextDiffs: new Map([[
+          'boundary:1:0',
+          {
+            key: 'boundary:1:0',
+            kind: 'boundary',
+            basePosition: 1,
+            slotIndex: 0,
+            category: 'majority',
+            dominantValue: '丙',
+            voteCount: 2,
+            values: new Map([
+              ['claude', '丙'],
+              ['gemini', '丁'],
+              ['gpt', '丙']
+            ])
+          }
+        ]])
+      }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': createEmptyPositionDiff() };
+      app.positionMaps = { 'seg-001': createEmptyPositionDiff() };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      const unresolvedHtml = app.renderCurrentInlineViewHtml();
+      assert.includes(unresolvedHtml, 'marker-textmismatch textdiff-majority', 'unresolved boundary text diff uses marker-textmismatch class');
+      assert.equal(unresolvedHtml.includes('marker-textmismatch-resolved'), false, 'unresolved boundary text diff does not use resolved class');
+
+      // Resolve the boundary text diff by setting selected
+      app.segments[0].boundaryTextDiffs.get('boundary:1:0').selected = 'gemini';
+
+      const resolvedHtml = app.renderCurrentInlineViewHtml();
+      assert.includes(resolvedHtml, 'marker-textmismatch-resolved textdiff-majority', 'resolved boundary text diff uses marker-textmismatch-resolved class');
+      assert.equal(resolvedHtml.includes('>丁<'), true, 'resolved boundary text diff displays the selected model\'s character value');
+      assert.equal(resolvedHtml.includes('marker-textmismatch textdiff-majority'), false, 'resolved boundary text diff no longer uses unresolved marker class');
     }
   },
   {
@@ -13645,6 +13741,93 @@ const adjudicationTestSuites = [
       assert.equal(votes.filter(vote => vote.value === '∅' && vote.markerClass === 'textdiff-majority').length, 2, 'omitted majority rows keep the majority marker class');
       assert.equal(votes.find(vote => vote.model === 'gemini').value, '丙', 'popup row exposes the inserted boundary text char on the contributing model');
       assert.equal(votes.find(vote => vote.model === 'gemini').markerClass, 'textdiff-conflict', 'minority inserted boundary text char keeps the conflict marker class');
+    }
+  },
+  {
+    name: 'T027n-T-UNIT ResolveTextDiff sets entry.selected and reduces unresolved text diff count',
+    fn(assert) {
+      const app = adjApp();
+      app.job = {
+        candidatesBySegment: {
+          'seg-001': [
+            { model: 'claude' },
+            { model: 'gemini' },
+            { model: 'gpt' }
+          ]
+        }
+      };
+      app.segments = [{
+        id: 'seg-001',
+        stripped_text: '甲乙',
+        original_text: '甲乙',
+        inline_elements: [],
+        textDiffs: new Map([
+          [0, { index: 0, category: 'majority', baseChar: '甲', dominantValue: '甲', values: new Map([['claude', '甲'], ['gemini', '甲'], ['gpt', '乙']]) }],
+          [1, { index: 1, category: 'conflict', baseChar: '乙', dominantValue: '乙', values: new Map([['claude', '乙'], ['gemini', '己'], ['gpt', '已']]) }]
+        ])
+      }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': createEmptyPositionDiff() };
+
+      const statsBefore = app.currentSegmentTextDiffStats();
+      assert.equal(statsBefore.unresolved, 2, 'both text diffs start unresolved');
+      assert.equal(statsBefore.resolved, 0, 'no text diffs resolved initially');
+
+      app.ResolveTextDiff('seg-001', 0, 'claude');
+
+      const statsAfter = app.currentSegmentTextDiffStats();
+      assert.equal(statsAfter.unresolved, 1, 'unresolved count decrements after resolution');
+      assert.equal(statsAfter.resolved, 1, 'resolved count increments after resolution');
+      assert.equal(app.segments[0].textDiffs.get(0).selected, 'claude', 'entry.selected is set to the chosen model');
+      assert.equal(app.segments[0].textDiffs.get(1).selected, undefined, 'second entry remains unresolved');
+    }
+  },
+  {
+    name: 'T027o-T-UNIT resolveTextDiffVote closes popup and marks text diff as selected',
+    fn(assert) {
+      const app = adjApp();
+      app.job = {
+        candidatesBySegment: {
+          'seg-001': [
+            { model: 'claude' },
+            { model: 'gemini' },
+            { model: 'gpt' }
+          ]
+        }
+      };
+      app.segments = [{
+        id: 'seg-001',
+        stripped_text: '甲',
+        original_text: '甲',
+        inline_elements: [],
+        textDiffs: new Map([
+          [0, { index: 0, category: 'majority', baseChar: '甲', dominantValue: '甲', values: new Map([['claude', '甲'], ['gemini', '甲'], ['gpt', '乙']]) }]
+        ])
+      }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': createEmptyPositionDiff() };
+
+      app.openTextDiffPopup(0, { getBoundingClientRect: () => ({ left: 10, right: 40, bottom: 20, top: 5 }) });
+      assert.equal(app.popupOpen, true, 'text diff popup opens');
+      assert.equal(app.popupMode, 'textdiff', 'popup mode is textdiff');
+
+      let votes = app.popupTextDiffVotes();
+      assert.equal(votes.every(v => v.selected === false), true, 'no vote is selected before resolution');
+
+      const claudeVote = votes.find(v => v.model === 'claude');
+      app.resolveTextDiffVote(claudeVote);
+
+      assert.equal(app.popupOpen, false, 'popup closes after resolveTextDiffVote');
+      assert.equal(app.segments[0].textDiffs.get(0).selected, 'claude', 'text diff entry is marked as selected');
+
+      app.openTextDiffPopup(0, { getBoundingClientRect: () => ({ left: 10, right: 40, bottom: 20, top: 5 }) });
+      votes = app.popupTextDiffVotes();
+      assert.equal(votes.find(v => v.model === 'claude').selected, true, 'reopened popup shows claude row as selected');
+      assert.equal(votes.find(v => v.model === 'gemini').selected, false, 'gemini row is not selected');
+      assert.equal(app.currentSegmentTextDiffStats().resolved, 1, 'resolved count reflects the resolution');
+      assert.equal(app.currentSegmentTextDiffStats().unresolved, 0, 'unresolved count reaches zero');
     }
   },
   {
@@ -18152,7 +18335,24 @@ function getReleaseNotesHtml() {
       <hr style="margin: 2rem 0; border: none; border-top: 1px solid #ccc;">
 
       <h3>📦 版本 V1 (003-adjudication-editor) — 裁決編輯器</h3>
-      <p><strong>發布日期：</strong>2026-05</p>
+      <p><strong>發布日期：</strong>2026-06</p>
+
+      <h4>Hotfix（2026-06-09）— 文字差異選取與視覺狀態修復</h4>
+      <ul>
+        <li>文字差異彈出選單改為可點擊按鈕，選取模型後正確記錄結果並更新統計列</li>
+        <li>已裁決文字差異標記改用黑底白字顯示，字元內容切換為所選模型的值，視覺效果與標點差異一致</li>
+      </ul>
+
+      <h4>Hotfix（2026-05-25）— GitHub XML 連結與 Token 存取修復</h4>
+      <ul>
+        <li>XPath 文脈查找改用段落本身的 xpath 欄位，修正 GitHub 模式下 XML 面板顯示錯誤節點的問題</li>
+        <li>有 PAT Token 時直接走 GitHub Contents API，消除私有倉庫產生的 404 console 雜訊</li>
+      </ul>
+
+      <h4>Hotfix（2026-05-21）— 段落導航效能大幅提升</h4>
+      <ul>
+        <li>557 段工作的段落導航延遲從約 41 秒降至 75 毫秒，透過統計快取與 Alpine 追蹤守衛優化</li>
+      </ul>
       <p>V1 是一個全新的工具，從過去的三文本比對工具（Preview 1~5）轉型為 <strong>LLM 重標點裁決編輯器</strong>。
          使用者載入流水線產出的 <code>*_markers.json</code> 與一個或多個 <code>*_repunctuated.json</code>（LLM 候選標點），
          逐段審閱、精確修改，最終匯出 <code>*_golden.json</code> 供 FSZInspector XML 重組使用。</p>
@@ -20939,7 +21139,8 @@ function adjApp() {
           markerClass: entry.category === 'majority' && rawValue === entry.dominantValue
             ? 'textdiff-majority'
             : 'textdiff-conflict',
-          rowClass: index % 2 === 0 ? 'popup-marker-conflict-ac' : 'popup-marker-conflict-b'
+          rowClass: index % 2 === 0 ? 'popup-marker-conflict-ac' : 'popup-marker-conflict-b',
+          selected: entry.selected === candidate.model
         };
       });
     },
@@ -21249,6 +21450,29 @@ function adjApp() {
         this.normalizeSegmentFilter(this.currentSegment?.id || segmentId);
         this.debouncedSaveSession();
       }
+    },
+
+    ResolveTextDiff(segmentId, textDiffKey, modelName) {
+      const segment = this.segments.find(item => item.id === segmentId);
+      if (!segment) {
+        return;
+      }
+      const entry = getSegmentTextDiffEntryByKey(segment, textDiffKey);
+      if (!entry) {
+        return;
+      }
+      entry.selected = modelName;
+      this.exportCompleted = false;
+      this.closePopup();
+      this.syncSegmentCompletion(segmentId);
+      this.debouncedSaveSession();
+    },
+
+    resolveTextDiffVote(vote) {
+      if (!this.currentSegment || !vote) {
+        return;
+      }
+      this.ResolveTextDiff(this.currentSegment.id, this.popupTextDiffIndex, vote.model);
     },
 
     resolvePopupVote(vote) {
