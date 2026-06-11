@@ -8034,7 +8034,7 @@ function extractJobId(sourceMarkers) {
   if (!sourceMarkers) {
     return null;
   }
-  const match = /^(y\d+_\d+(?:_\d+)?)/.exec(String(sourceMarkers));
+  const match = /^(y\d+_(?:\d+(?:-\d+)*|[a-z]+))/.exec(String(sourceMarkers));
   return match ? match[1] : null;
 }
 
@@ -9176,7 +9176,8 @@ const adjudicationTestSuites = [
     name: 'T006-T-UNIT extractJobId handles supported and unsupported markers filenames',
     fn(assert) {
       assert.equal(extractJobId('y109_02_markers.json'), 'y109_02', 'two-part job id is extracted');
-      assert.equal(extractJobId('y110_03_04_markers.json'), 'y110_03_04', 'three-part job id is extracted');
+      assert.equal(extractJobId('y062_back_markers.json'), 'y062_back', 'ynnn_back job id is extracted');
+      assert.equal(extractJobId('y001_01-2_markers.json'), 'y001_01-2', 'ynnn_nn-n hyphenated job id is extracted');
       assert.equal(extractJobId('custom_markers.json'), null, 'non-matching filename returns null');
       assert.equal(extractJobId(null), null, 'null input returns null');
       assert.equal(extractJobId(undefined), null, 'undefined input returns null');
@@ -13949,6 +13950,10 @@ const adjudicationTestSuites = [
     fn(assert) {
       assert.equal(bookFromPath('y001/y001_01.xml'), 'y001', 'book from path');
       assert.equal(bookFromPath('y001_01.xml'), 'y001', 'fallback book from filename');
+      assert.equal(bookFromPath('y062/y062_back.xml'), 'y062', 'book from ynnn_back path');
+      assert.equal(bookFromPath('y062_back.xml'), 'y062', 'book fallback from ynnn_back filename');
+      assert.equal(bookFromPath('y001/y001_01-2.xml'), 'y001', 'book from ynnn_nn-n path');
+      assert.equal(bookFromPath('y001_01-2.xml'), 'y001', 'book fallback from ynnn_nn-n filename');
       assert.equal(fszUrl('y001', '003'), 'http://buddhistinformatics.dila.edu.tw/fosizhi/ui.html?book=y001&cpage=003', 'fsz url');
 
       const parser = new DOMParser();
@@ -14475,14 +14480,29 @@ const adjudicationTestSuites = [
         'deriveGithubXmlPath composes repo-relative XML paths from markers filenames'
       );
       assert.equal(
-        deriveGithubXmlPath('xml', 'y110_03_04_markers.json', 'y110/y110_03_04.xml'),
-        'xml/y/y110/y110_03_04.xml',
-        'deriveGithubXmlPath preserves optional third filename segments'
+        deriveGithubXmlPath('xml', 'y062_back_markers.json', 'y062/y062_back.xml'),
+        'xml/y/y062/y062_back.xml',
+        'deriveGithubXmlPath handles ynnn_back word-suffix pattern'
+      );
+      assert.equal(
+        deriveGithubXmlPath('xml', 'y001_01-2_markers.json', 'y001/y001_01-2.xml'),
+        'xml/y/y001/y001_01-2.xml',
+        'deriveGithubXmlPath handles ynnn_nn-n hyphenated suffix pattern'
       );
       assert.deepEqual(
         buildGithubXmlPathCandidates('xml', 'y109_02_markers.json', 'y109/y109_02.xml'),
         ['xml/y/y109/y109_02.xml', 'xml/y/y109_02.xml', 'xml/y109/y109_02.xml'],
         'buildGithubXmlPathCandidates: 3-level markers-derived path first, series-letter edition folder second, root+source_file fallback third'
+      );
+      assert.deepEqual(
+        buildGithubXmlPathCandidates('xml', 'y062_back_markers.json', 'y062/y062_back.xml'),
+        ['xml/y/y062/y062_back.xml', 'xml/y/y062_back.xml', 'xml/y062/y062_back.xml'],
+        'buildGithubXmlPathCandidates handles ynnn_back word-suffix pattern'
+      );
+      assert.deepEqual(
+        buildGithubXmlPathCandidates('xml', 'y001_01-2_markers.json', 'y001/y001_01-2.xml'),
+        ['xml/y/y001/y001_01-2.xml', 'xml/y/y001_01-2.xml', 'xml/y001/y001_01-2.xml'],
+        'buildGithubXmlPathCandidates handles ynnn_nn-n hyphenated suffix pattern'
       );
 
       const savedMode = localStorage.getItem('xml_source_mode');
@@ -18336,6 +18356,12 @@ function getReleaseNotesHtml() {
 
       <h3>📦 版本 V1 (003-adjudication-editor) — 裁決編輯器</h3>
       <p><strong>發布日期：</strong>2026-06</p>
+
+      <h4>Hotfix（2026-06-11）— XML 檢視與佛寺志網頁支援 <code>ynnn_back</code>、<code>ynnn_nn-n</code> 命名</h4>
+      <ul>
+        <li>修正 <code>y062_back</code>（文字後綴）及 <code>y001_01-2</code>（連字號後綴）命名格式無法解析，導致 XML 文脈面板顯示「File not found」錯誤</li>
+        <li>XML 檢視與佛寺志網頁按鈕皆透過同一解析函式，一處修正兩者同步覆蓋</li>
+      </ul>
 
       <h4>Hotfix（2026-06-09）— 文字差異選取與視覺狀態修復</h4>
       <ul>
