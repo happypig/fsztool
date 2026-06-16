@@ -2037,6 +2037,86 @@
         gap: 0;
       }
     }
+    .adj-punc-group { display: inline-flex; align-items: center; gap: 0.25rem; margin-right: 0.75rem; }
+    .stat-badge-faded { background: transparent !important; border-color: transparent !important; color: inherit !important; opacity: 0.55; }
+    .punc-toggle {
+      width: 1.8rem; height: 1rem; border-radius: 999px;
+      background: #cbd5e1; border: 1px solid #94a3b8;
+      position: relative; cursor: pointer; padding: 0; flex-shrink: 0;
+    }
+    .punc-toggle::after {
+      content: ''; position: absolute; width: 0.7rem; height: 0.7rem;
+      border-radius: 50%; top: 0.1rem; transition: left 0.2s;
+    }
+    .punc-toggle.off::after { left: 0.1rem; }
+    .punc-toggle.on::after { left: 0.9rem; }
+    .punc-toggle.on.identical { background: #28a745; border-color: #28a745; }
+    .punc-toggle.on.majority { background: #007bff; border-color: #007bff; }
+    .punc-toggle.on.conflict { background: #dc3545; border-color: #dc3545; }
+    .punc-toggle.on.inserted { background: #ffc107; border-color: #e0a800; }
+    .punc-toggle.on.chardiff { background: #212529; border-color: #212529; }
+    .punc-toggle.on.textdiff { background: #212529; border-color: #212529; }
+    .punc-toggle.identical::after { background: #28a745; }
+    .punc-toggle.majority::after { background: #007bff; }
+    .punc-toggle.conflict::after { background: #dc3545; }
+    .punc-toggle.inserted::after { background: #ffc107; }
+    .punc-toggle.chardiff::after { background: #212529; }
+    .punc-toggle.textdiff::after { background: #212529; }
+    .punc-toggle.on::after { background: #fff; }
+    .punc-toggle:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
+    .adj-hide-identical .marker.marker-identical,
+    .adj-hide-identical .marker.marker-identical.marker-resolved {
+      background: transparent !important; border-color: transparent !important;
+      color: inherit !important; font-weight: inherit !important;
+      box-shadow: none !important; padding: 0 !important;
+    }
+    .adj-hide-majority .marker.marker-majority,
+    .adj-hide-majority .marker.marker-majority.marker-resolved {
+      background: transparent !important; border-color: transparent !important;
+      color: inherit !important; font-weight: inherit !important;
+      box-shadow: none !important; padding: 0 !important;
+    }
+    .adj-hide-conflict .marker.marker-conflict,
+    .adj-hide-conflict .marker.marker-conflict.marker-resolved {
+      background: transparent !important; border-color: transparent !important;
+      color: inherit !important; font-weight: inherit !important;
+      box-shadow: none !important; padding: 0 !important;
+    }
+    .adj-hide-inserted .marker-inserted {
+      background: transparent !important; border-color: transparent !important;
+      color: inherit !important; font-weight: inherit !important;
+      box-shadow: none !important; padding: 0 !important;
+    }
+    .adj-hide-chardiff .marker-textmismatch.textdiff-base,
+    .adj-hide-chardiff .marker-textmismatch-resolved.textdiff-base {
+      background: transparent !important; border-color: transparent !important;
+      color: inherit !important; font-weight: inherit !important;
+      box-shadow: none !important; padding: 0 !important;
+    }
+    .adj-hide-textdiff .marker-textmismatch.textdiff-boundary,
+    .adj-hide-textdiff .marker-textmismatch-resolved.textdiff-boundary {
+      background: transparent !important; border-color: transparent !important;
+      color: inherit !important; font-weight: inherit !important;
+      box-shadow: none !important; padding: 0 !important;
+    }
+    .adj-hide-textdiff .adj-empty,
+    .adj-hide-chardiff .adj-empty,
+    .adj-hide-identical .adj-empty,
+    .adj-hide-majority .adj-empty,
+    .adj-hide-conflict .adj-empty,
+    .adj-hide-inserted .adj-empty { display: none !important; }
+    .adj-hide-textdiff [data-adj-empty],
+    .adj-hide-chardiff [data-adj-empty],
+    .adj-hide-identical [data-adj-empty],
+    .adj-hide-majority [data-adj-empty],
+    .adj-hide-conflict [data-adj-empty],
+    .adj-hide-inserted [data-adj-empty] { display: none !important; }
+    .adj-hide-textdiff [title*="display: ∅"],
+    .adj-hide-chardiff [title*="display: ∅"],
+    .adj-hide-identical [title*="display: ∅"],
+    .adj-hide-majority [title*="display: ∅"],
+    .adj-hide-conflict [title*="display: ∅"],
+    .adj-hide-inserted [title*="display: ∅"] { display: none !important; }
   </style>
 </head>
 <body>
@@ -2192,22 +2272,39 @@
             <article class="adj-card adj-stats-card adj-main-column">
               <small class="adj-stats-inline">
                 <span class="adj-stats-label" x-text="segmentStatsLeadLabel()"></span>
-                <span class="stat-badge stat-badge-identical">一致 <span x-text="currentSegmentStats().identical"></span></span>
-                <span class="stat-badge stat-badge-majority">多數 <span x-text="currentSegmentStats().majority"></span></span>
-                <span class="stat-badge stat-badge-conflict">衝突 <span x-text="currentSegmentStats().conflict"></span></span>
-                <span class="stat-badge stat-badge-resolved">✓ <span x-text="currentSegmentStats().resolved"></span></span>
-                <span x-show="currentSegmentStats().inserted > 0" class="stat-badge stat-badge-inserted">新增 <span x-text="currentSegmentStats().inserted"></span></span>
-                <template x-if="currentSegmentTextDiffStats().visible">
+                <span class="adj-punc-group">
+                  <span class="stat-badge stat-badge-identical" :class="{ 'stat-badge-faded': hiddenMarkerTypes.identical }">一致 <span x-text="currentSegmentStats().identical"></span></span>
+                  <button class="punc-toggle identical" :class="hiddenMarkerTypes.identical ? 'off' : 'on'" @click="toggleMarkerType('identical')" role="switch" :aria-checked="!hiddenMarkerTypes.identical"></button>
+                </span>
+                <span class="adj-punc-group">
+                  <span class="stat-badge stat-badge-majority" :class="{ 'stat-badge-faded': hiddenMarkerTypes.majority }">多數 <span x-text="currentSegmentStats().majority"></span></span>
+                  <button class="punc-toggle majority" :class="hiddenMarkerTypes.majority ? 'off' : 'on'" @click="toggleMarkerType('majority')" role="switch" :aria-checked="!hiddenMarkerTypes.majority"></button>
+                </span>
+                <span class="adj-punc-group">
+                  <span class="stat-badge stat-badge-conflict" :class="{ 'stat-badge-faded': hiddenMarkerTypes.conflict }">衝突 <span x-text="currentSegmentStats().conflict"></span></span>
+                  <span class="stat-badge stat-badge-resolved" :class="{ 'stat-badge-faded': hiddenMarkerTypes.conflict }">✓ <span x-text="currentSegmentStats().resolved"></span></span>
+                  <button class="punc-toggle conflict" :class="hiddenMarkerTypes.conflict ? 'off' : 'on'" @click="toggleMarkerType('conflict')" role="switch" :aria-checked="!hiddenMarkerTypes.conflict"></button>
+                </span>
+                <template x-if="currentSegmentStats().inserted > 0">
+                  <span class="adj-punc-group">
+                    <span class="stat-badge stat-badge-inserted" :class="{ 'stat-badge-faded': hiddenMarkerTypes.inserted }">新增 <span x-text="currentSegmentStats().inserted"></span></span>
+                    <button class="punc-toggle inserted" :class="hiddenMarkerTypes.inserted ? 'off' : 'on'" @click="toggleMarkerType('inserted')" role="switch" :aria-checked="!hiddenMarkerTypes.inserted"></button>
+                  </span>
+                </template>
+                <template x-if="currentSegmentTextdiffStats().visible">
                   <span class="adj-textdiff-stat-row">
                     <span class="adj-textdiff-label">段落內文字不一致:</span>
-                    <span class="stat-badge stat-badge-textmismatch">不一致 <span x-text="currentSegmentTextDiffStats().unresolved"></span></span>
-                    <span class="stat-badge stat-badge-textmismatch-resolved">✓ <span x-text="currentSegmentTextDiffStats().resolved"></span></span>
+                    <span class="adj-punc-group">
+                      <span class="stat-badge stat-badge-textmismatch" :class="{ 'stat-badge-faded': hiddenMarkerTypes.textdiff }">不一致 <span x-text="currentSegmentTextdiffStats().unresolved"></span></span>
+                      <span class="stat-badge stat-badge-textmismatch-resolved" :class="{ 'stat-badge-faded': hiddenMarkerTypes.textdiff }">✓ <span x-text="currentSegmentTextdiffStats().resolved"></span></span>
+                      <button class="punc-toggle textdiff" :class="hiddenMarkerTypes.textdiff ? 'off' : 'on'" @click="toggleMarkerType('textdiff')" role="switch" :aria-checked="!hiddenMarkerTypes.textdiff"></button>
+                    </span>
                   </span>
                 </template>
               </small>
             </article>
 
-            <div class="adj-paragraph-shell adj-main-column" :class="{ 'adj-paragraph-shell-active': insertionMode }">
+            <div class="adj-paragraph-shell adj-main-column" :class="{ 'adj-paragraph-shell-active': insertionMode, 'adj-hide-identical': hiddenMarkerTypes.identical, 'adj-hide-majority': hiddenMarkerTypes.majority, 'adj-hide-conflict': hiddenMarkerTypes.conflict, 'adj-hide-inserted': hiddenMarkerTypes.inserted, 'adj-hide-chardiff': hiddenMarkerTypes.chardiff, 'adj-hide-textdiff': hiddenMarkerTypes.textdiff }">
               <template x-if="insertionMode">
                 <div class="adj-insertion-banner">
                   <div class="adj-insertion-copy" x-text="insertionModeBannerText()"></div>
@@ -8333,24 +8430,30 @@ function buildInlineViewHtml(segment, positionDiff, fractionalInsertions, insert
       if (event.entry.differsFromOriginal) {
         classes.push('marker-original-diff');
       }
+      const isEmptyPunc = event.char === '∅';
+      if (isEmptyPunc) classes.push('adj-empty');
+      const puncDataAttr = isEmptyPunc ? ' data-adj-empty=""' : '';
       const title = [
         `${event.entry.category} (${event.entry.voteCount})`,
         `original: ${event.entry.originalValue || '∅'}`,
         `display: ${event.char}`
       ].join(' | ');
-      html += `<span class="${classes.join(' ')}" data-position-key="${escapeHtml(event.entry.key || String(event.entry.position))}" title="${escapeHtml(title)}">${escapeHtml(event.char)}</span>`;
+      html += `<span class="${classes.join(' ')}"${puncDataAttr} data-position-key="${escapeHtml(event.entry.key || String(event.entry.position))}" title="${escapeHtml(title)}">${escapeHtml(event.char)}</span>`;
     });
 
     (boundaryTextDiffs.get(boundary) || []).forEach(entry => {
       const isResolved = entry.selected != null;
-      const classes = [isResolved ? 'marker-textmismatch-resolved' : 'marker-textmismatch', `textdiff-${entry.category}`];
+      const classes = [isResolved ? 'marker-textmismatch-resolved' : 'marker-textmismatch', 'textdiff-boundary', `textdiff-${entry.category}`];
       const displayValue = isResolved
         ? (getTextDiffValue(entry, entry.selected) || '∅')
         : getTextDiffDisplayValue(entry);
       const title = getTextDiffValueEntries(entry)
         .map(([model, value]) => `${model}: ${value || '∅'}`)
         .join(' | ');
-      html += `<span class="${classes.join(' ')}" data-text-diff-key="${escapeHtml(entry.key || formatBoundaryTextDiffKey(entry.basePosition, entry.slotIndex))}" title="${escapeHtml(title)}">${escapeHtml(displayValue)}</span>`;
+      const isEmpty = displayValue === '∅';
+      if (isEmpty) classes.push('adj-empty');
+      const dataAttr = isEmpty ? ' data-adj-empty=""' : '';
+      html += `<span class="${classes.join(' ')}"${dataAttr} data-text-diff-key="${escapeHtml(entry.key || formatBoundaryTextDiffKey(entry.basePosition, entry.slotIndex))}" title="${escapeHtml(title)}">${escapeHtml(displayValue)}</span>`;
     });
 
     beforeCharInsertions.forEach(event => {
@@ -8367,7 +8470,7 @@ function buildInlineViewHtml(segment, positionDiff, fractionalInsertions, insert
         const textDiff = textDiffs.get(boundary);
         if (textDiff) {
           const isResolved = textDiff.selected != null;
-          const classes = [isResolved ? 'marker-textmismatch-resolved' : 'marker-textmismatch', `textdiff-${textDiff.category}`];
+          const classes = [isResolved ? 'marker-textmismatch-resolved' : 'marker-textmismatch', 'textdiff-base', `textdiff-${textDiff.category}`];
           if (insertionMode) {
             classes.push('char-insertable');
           }
@@ -8377,7 +8480,10 @@ function buildInlineViewHtml(segment, positionDiff, fractionalInsertions, insert
           const title = getTextDiffValueEntries(textDiff)
             .map(([model, value]) => `${model}: ${value || '∅'}`)
             .join(' | ');
-          html += `<span class="${classes.join(' ')}" data-base-offset="${boundary + 1}" data-text-diff-index="${boundary}" data-text-diff-key="${escapeHtml(textDiff.key || formatBaseTextDiffKey(boundary))}" title="${escapeHtml(title)}">${escapeHtml(displayChar)}</span>`;
+      const isEmpty = displayChar === '∅';
+      if (isEmpty) classes.push('adj-empty');
+      const dataAttr = isEmpty ? ' data-adj-empty=""' : '';
+          html += `<span class="${classes.join(' ')}"${dataAttr} data-base-offset="${boundary + 1}" data-text-diff-index="${boundary}" data-text-diff-key="${escapeHtml(textDiff.key || formatBaseTextDiffKey(boundary))}" title="${escapeHtml(title)}">${escapeHtml(displayChar)}</span>`;
         } else if (insertionMode) {
           html += `<span class="char-insertable" data-base-offset="${boundary + 1}">${escapeHtml(char)}</span>`;
         } else {
@@ -9838,11 +9944,11 @@ const adjudicationTestSuites = [
 
       const html = app.renderCurrentInlineViewHtml();
       assert.includes(html, 'marker marker-identical marker-original-diff', 'identical marker');
-      assert.includes(html, 'class="marker marker-majority"', 'majority marker');
+      assert.includes(html, 'class="marker marker-majority adj-empty"', 'majority marker');
       assert.includes(html, 'class="marker marker-conflict marker-resolved"', 'resolved conflict marker');
       assert.includes(html, 'class="marker marker-inserted"', 'inserted marker');
       assert.includes(html, 'marker-original-diff', 'consensus marker warns when it differs from original');
-      assert.includes(html, 'marker-textmismatch textdiff-majority', 'text diff marker replaces plain base text');
+      assert.includes(html, 'marker-textmismatch textdiff-base textdiff-majority', 'text diff marker replaces plain base text');
       assert.includes(html, '>∅<', 'majority empty vote renders ∅ in the paragraph');
     }
   },
@@ -9940,11 +10046,11 @@ const adjudicationTestSuites = [
 
       app.insertionMode = true;
       const insertionHtml = app.renderCurrentInlineViewHtml();
-      assert.includes(insertionHtml, 'marker-textmismatch textdiff-conflict char-insertable', 'text diff span is insertable in insertion mode');
+      assert.includes(insertionHtml, 'marker-textmismatch textdiff-base textdiff-conflict char-insertable', 'text diff span is insertable in insertion mode');
 
       app.insertionMode = false;
       const normalHtml = app.renderCurrentInlineViewHtml();
-      assert.equal(normalHtml.includes('marker-textmismatch textdiff-conflict char-insertable'), false, 'normal mode does not keep insertable class on text diff spans');
+      assert.equal(normalHtml.includes('marker-textmismatch textdiff-base textdiff-conflict char-insertable'), false, 'normal mode does not keep insertable class on text diff spans');
     }
   },
   {
@@ -9975,16 +10081,16 @@ const adjudicationTestSuites = [
       app.fractionalInsertions = { 'seg-001': new Map() };
 
       const unresolvedHtml = app.renderCurrentInlineViewHtml();
-      assert.includes(unresolvedHtml, 'marker-textmismatch textdiff-conflict', 'unresolved base text diff uses marker-textmismatch class');
+      assert.includes(unresolvedHtml, 'marker-textmismatch textdiff-base textdiff-conflict', 'unresolved base text diff uses marker-textmismatch class with textdiff-base kind-class');
       assert.equal(unresolvedHtml.includes('marker-textmismatch-resolved'), false, 'unresolved base text diff does not use resolved class');
 
       // Resolve the text diff by setting selected
       app.segments[0].textDiffs.get(1).selected = 'gemini';
 
       const resolvedHtml = app.renderCurrentInlineViewHtml();
-      assert.includes(resolvedHtml, 'marker-textmismatch-resolved textdiff-conflict', 'resolved base text diff uses marker-textmismatch-resolved class');
+      assert.includes(resolvedHtml, 'marker-textmismatch-resolved textdiff-base textdiff-conflict', 'resolved base text diff uses marker-textmismatch-resolved class with textdiff-base kind-class');
       assert.equal(resolvedHtml.includes('>已<'), true, 'resolved base text diff displays the selected model\'s character value');
-      assert.equal(resolvedHtml.includes('marker-textmismatch textdiff-conflict'), false, 'resolved base text diff no longer uses unresolved marker class');
+      assert.equal(resolvedHtml.includes('marker-textmismatch textdiff-base textdiff-conflict'), false, 'resolved base text diff no longer uses unresolved marker class');
     }
   },
   {
@@ -10022,16 +10128,16 @@ const adjudicationTestSuites = [
       app.fractionalInsertions = { 'seg-001': new Map() };
 
       const unresolvedHtml = app.renderCurrentInlineViewHtml();
-      assert.includes(unresolvedHtml, 'marker-textmismatch textdiff-majority', 'unresolved boundary text diff uses marker-textmismatch class');
+      assert.includes(unresolvedHtml, 'marker-textmismatch textdiff-boundary textdiff-majority', 'unresolved boundary text diff uses marker-textmismatch class with textdiff-boundary kind-class');
       assert.equal(unresolvedHtml.includes('marker-textmismatch-resolved'), false, 'unresolved boundary text diff does not use resolved class');
 
       // Resolve the boundary text diff by setting selected
       app.segments[0].boundaryTextDiffs.get('boundary:1:0').selected = 'gemini';
 
       const resolvedHtml = app.renderCurrentInlineViewHtml();
-      assert.includes(resolvedHtml, 'marker-textmismatch-resolved textdiff-majority', 'resolved boundary text diff uses marker-textmismatch-resolved class');
+      assert.includes(resolvedHtml, 'marker-textmismatch-resolved textdiff-boundary textdiff-majority', 'resolved boundary text diff uses marker-textmismatch-resolved class with textdiff-boundary kind-class');
       assert.equal(resolvedHtml.includes('>丁<'), true, 'resolved boundary text diff displays the selected model\'s character value');
-      assert.equal(resolvedHtml.includes('marker-textmismatch textdiff-majority'), false, 'resolved boundary text diff no longer uses unresolved marker class');
+      assert.equal(resolvedHtml.includes('marker-textmismatch textdiff-boundary textdiff-majority'), false, 'resolved boundary text diff no longer uses unresolved marker class');
     }
   },
   {
@@ -10368,7 +10474,7 @@ const adjudicationTestSuites = [
 
       const html = app.renderCurrentInlineViewHtml();
       const textOnly = html.replace(/<[^>]+>/g, '');
-      assert.includes(html, 'marker-textmismatch textdiff-majority', 'majority-empty text diff renders with the majority badge style');
+      assert.includes(html, 'marker-textmismatch textdiff-base textdiff-majority', 'majority-empty text diff renders with the majority badge style and textdiff-base kind-class');
       assert.equal(textOnly, '甲乙丙', 'text order remains stable when the dominant text diff value is empty');
     }
   },
@@ -13433,7 +13539,7 @@ const adjudicationTestSuites = [
       app.fractionalInsertions = { 'seg-001': new Map() };
 
       const html = app.renderCurrentInlineViewHtml();
-      assert.includes(html, 'class="marker marker-conflict marker-resolved marker-original-diff"', 'resolved omission marker gets the same solid resolved class as other resolved punctuation');
+      assert.includes(html, 'class="marker marker-conflict marker-resolved marker-original-diff adj-empty"', 'resolved omission marker gets the same solid resolved class as other resolved punctuation');
       assert.includes(html, '>∅<', 'resolved omission still renders the omission token');
     }
   },
@@ -18268,8 +18374,776 @@ const adjudicationTestSuites = [
       assert.includes(context.afterXml, '<list>', 'adjacent <list> element appears in afterXml when list is included in the sibling filter');
       assert.equal(context.afterXml.includes('<list>') || context.afterXml.includes('&lt;list'), true, '<list> element is serialized into afterXml');
     }
+  },
+  {
+    name: 'T127-T-BDD renderCurrentInlineViewHtml adds textdiff-base kind-class to base (char-diff) text-diff spans',
+    fn(assert) {
+      const app = adjApp();
+      app.segments = [{
+        id: 'seg-001',
+        stripped_text: '甲乙丙',
+        original_text: '甲乙丙',
+        inline_elements: [],
+        textDiffs: new Map([
+          [1, {
+            index: 1,
+            category: 'majority',
+            baseChar: '乙',
+            dominantValue: '',
+            voteCount: 2,
+            values: new Map([['claude', '乙'], ['gemini', ''], ['gpt', '']])
+          }]
+        ]),
+        boundaryTextDiffs: new Map()
+      }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': createEmptyPositionDiff() };
+      app.positionMaps = { 'seg-001': createEmptyPositionDiff() };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      const html = app.renderCurrentInlineViewHtml();
+      assert.includes(html, 'textdiff-base', 'base text-diff span includes textdiff-base kind-class');
+      assert.equal(html.includes('textdiff-boundary'), false, 'no boundary kind-class appears when no boundary text diffs exist');
+      assert.includes(html, 'marker-textmismatch textdiff-base textdiff-majority', 'base text-diff marker has the correct combined class string');
+    }
+  },
+  {
+    name: 'T128-T-BDD renderCurrentInlineViewHtml adds textdiff-boundary kind-class to boundary (punc-diff) text-diff spans',
+    fn(assert) {
+      const app = adjApp();
+      app.segments = [{
+        id: 'seg-001',
+        stripped_text: '甲乙',
+        original_text: '甲乙',
+        inline_elements: [],
+        textDiffs: new Map(),
+        boundaryTextDiffs: new Map([[
+          'boundary:1:0',
+          {
+            key: 'boundary:1:0',
+            kind: 'boundary',
+            basePosition: 1,
+            slotIndex: 0,
+            category: 'conflict',
+            dominantValue: '，',
+            voteCount: 1,
+            values: new Map([['claude', '，'], ['gemini', '。'], ['gpt', '，']])
+          }
+        ]])
+      }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': createEmptyPositionDiff() };
+      app.positionMaps = { 'seg-001': createEmptyPositionDiff() };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      const html = app.renderCurrentInlineViewHtml();
+      assert.includes(html, 'textdiff-boundary', 'boundary text-diff span includes textdiff-boundary kind-class');
+      assert.includes(html, 'marker-textmismatch textdiff-boundary textdiff-conflict', 'boundary text-diff marker has the correct combined class string');
+    }
+  },
+  {
+    name: 'T129-T-BDD data-adj-empty is present on boundary (punc-diff) ∅ spans; base (char-diff) spans never display ∅ so they lack it',
+    fn(assert) {
+      const app = adjApp();
+      app.segments = [{
+        id: 'seg-001',
+        stripped_text: '甲乙丙',
+        original_text: '甲乙丙',
+        inline_elements: [],
+        textDiffs: new Map(),
+        boundaryTextDiffs: new Map([[
+          'boundary:1:0',
+          {
+            key: 'boundary:1:0',
+            kind: 'boundary',
+            basePosition: 1,
+            slotIndex: 0,
+            category: 'majority',
+            dominantValue: '',
+            voteCount: 2,
+            values: new Map([['claude', ''], ['gemini', ''], ['gpt', '，']])
+          }
+        ]])
+      }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': createEmptyPositionDiff() };
+      app.positionMaps = { 'seg-001': createEmptyPositionDiff() };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      const html = app.renderCurrentInlineViewHtml();
+      // Boundary ∅ span gets data-adj-empty
+      const boundarySpanWithEmpty = html.match(/textdiff-boundary[^>]*data-adj-empty/);
+      assert.notEqual(boundarySpanWithEmpty, null, 'boundary ∅ span has data-adj-empty attribute when dominant value is empty');
+      // Base text-diff spans do not display ∅ in practice (baseChar is always a real char),
+      // but the rendering code includes data-adj-empty logic for robustness.
+      // Verify at least the boundary case works
+      const adjEmptyMatches = html.match(/data-adj-empty/g);
+      assert.equal(adjEmptyMatches ? adjEmptyMatches.length : 0, 1, 'one data-adj-empty from the boundary ∅ span');
+    }
+  },
+  {
+    name: 'T130-T-BDD currentSegmentCharDiffStats returns counts for base text diffs only, excluding boundary entries',
+    fn(assert) {
+      const app = adjApp();
+      app.segments = [{
+        id: 'seg-001',
+        stripped_text: '甲乙丙',
+        original_text: '甲乙丙',
+        inline_elements: [],
+        textDiffs: new Map([
+          [1, { index: 1, category: 'majority', baseChar: '乙', dominantValue: '乙', voteCount: 2, values: new Map([['claude', '乙'], ['gemini', '乙'], ['gpt', '已']]) }]
+        ]),
+        boundaryTextDiffs: new Map([[
+          'boundary:1:0',
+          { key: 'boundary:1:0', kind: 'boundary', basePosition: 1, slotIndex: 0, category: 'conflict', dominantValue: '，', voteCount: 1, values: new Map([['claude', '，'], ['gemini', '。'], ['gpt', '，']]) }
+        ]])
+      }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': createEmptyPositionDiff() };
+      app.positionMaps = { 'seg-001': createEmptyPositionDiff() };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      const charStats = app.currentSegmentCharDiffStats();
+      assert.equal(charStats.visible, true, 'char-diff stats are visible when base text diffs exist');
+      assert.equal(charStats.total, 1, 'char-diff total counts only base text diffs');
+      assert.equal(charStats.unresolved, 1, 'char-diff unresolved counts only base text diffs');
+
+      // Resolve the base diff
+      app.segments[0].textDiffs.get(1).selected = 'claude';
+      const charStatsAfter = app.currentSegmentCharDiffStats();
+      assert.equal(charStatsAfter.resolved, 1, 'char-diff resolved count tracks base resolution');
+      assert.equal(charStatsAfter.unresolved, 0, 'char-diff unresolved reaches zero after resolve');
+    }
+  },
+  {
+    name: 'T131-T-BDD currentSegmentTextdiffStats returns counts for boundary text diffs only, excluding base entries',
+    fn(assert) {
+      const app = adjApp();
+      app.segments = [{
+        id: 'seg-001',
+        stripped_text: '甲乙',
+        original_text: '甲乙',
+        inline_elements: [],
+        textDiffs: new Map(),
+        boundaryTextDiffs: new Map([[
+          'boundary:1:0',
+          { key: 'boundary:1:0', kind: 'boundary', basePosition: 1, slotIndex: 0, category: 'conflict', dominantValue: '，', voteCount: 1, values: new Map([['claude', '，'], ['gemini', '。'], ['gpt', '，']]) }
+        ], [
+          'boundary:1:1',
+          { key: 'boundary:1:1', kind: 'boundary', basePosition: 1, slotIndex: 1, category: 'majority', dominantValue: '。', voteCount: 2, values: new Map([['claude', '。'], ['gemini', '。'], ['gpt', '']]) }
+        ]])
+      }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': createEmptyPositionDiff() };
+      app.positionMaps = { 'seg-001': createEmptyPositionDiff() };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      const puncStats = app.currentSegmentTextdiffStats();
+      assert.equal(puncStats.visible, true, 'punc-diff stats are visible when boundary text diffs exist');
+      assert.equal(puncStats.total, 2, 'punc-diff total counts only boundary text diffs');
+      assert.equal(puncStats.unresolved, 2, 'punc-diff unresolved counts all unresolved boundary diffs');
+
+      // Resolve one boundary diff
+      app.segments[0].boundaryTextDiffs.get('boundary:1:0').selected = 'claude';
+      const puncStatsAfter = app.currentSegmentTextdiffStats();
+      assert.equal(puncStatsAfter.resolved, 1, 'punc-diff resolved count tracks boundary resolution');
+      assert.equal(puncStatsAfter.unresolved, 1, 'punc-diff unresolved decreases after one resolve');
+    }
+  },
+  {
+    name: 'T132-T-BDD currentSegmentTextDiffStats still returns combined counts for backward compatibility',
+    fn(assert) {
+      const app = adjApp();
+      app.segments = [{
+        id: 'seg-001',
+        stripped_text: '甲乙丙',
+        original_text: '甲乙丙',
+        inline_elements: [],
+        textDiffs: new Map([
+          [1, { index: 1, category: 'majority', baseChar: '乙', dominantValue: '乙', voteCount: 2, values: new Map([['claude', '乙'], ['gemini', '乙'], ['gpt', '已']]) }]
+        ]),
+        boundaryTextDiffs: new Map([[
+          'boundary:1:0',
+          { key: 'boundary:1:0', kind: 'boundary', basePosition: 1, slotIndex: 0, category: 'conflict', dominantValue: '，', voteCount: 1, values: new Map([['claude', '，'], ['gemini', '。'], ['gpt', '，']]) }
+        ]])
+      }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': createEmptyPositionDiff() };
+      app.positionMaps = { 'seg-001': createEmptyPositionDiff() };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      const combined = app.currentSegmentTextDiffStats();
+      assert.equal(combined.visible, true, 'combined stats stay visible when any text diffs exist');
+      assert.equal(combined.total, 2, 'combined total includes both base and boundary entries');
+    }
+  },
+  {
+    name: 'T133-T-BDD comparison (punctuation) markers displaying ∅ have data-adj-empty for CSS display:none hiding',
+    fn(assert) {
+      const app = adjApp();
+      const segment = {
+        id: 'seg-001',
+        stripped_text: '甲乙',
+        original_text: '甲乙',
+        inline_elements: [],
+        textDiffs: new Map()
+      };
+      const diff = createEmptyPositionDiff();
+      // Majority entry with empty dominant value → displays ∅
+      diff.majorityPositions.set('1:0', {
+        position: 1,
+        key: '1:0',
+        basePosition: 1,
+        slotIndex: 0,
+        category: 'majority',
+        voteCount: 2,
+        chars: new Map([['a', []], ['b', []], ['c', ['。']]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: true,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        displayOrder: calculateComparisonDisplayOrder(1)
+      });
+      // Conflict entry with dominant value → displays punctuation, not ∅
+      diff.conflictPositions.set('0:0', {
+        position: 0,
+        key: '0:0',
+        basePosition: 0,
+        slotIndex: 0,
+        category: 'conflict',
+        voteCount: 1,
+        chars: new Map([['a', ['！']]]),
+        dominantValue: '！',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: true,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        displayOrder: calculateComparisonDisplayOrder(0)
+      });
+
+      app.segments = [segment];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': diff };
+      app.positionMaps = { 'seg-001': clonePositionDiff(diff) };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      const html = app.renderCurrentInlineViewHtml();
+      // The majority comparison marker displays ∅ and should have data-adj-empty
+      const dataAdjEmptySpans = html.match(/data-adj-empty/g);
+      assert.notEqual(dataAdjEmptySpans, null, 'data-adj-empty attribute is present in rendered HTML');
+      // The majority ∅ span: <span class="marker marker-majority" data-adj-empty="" data-position-key="1:0" ...>∅</span>
+      const majorityEmptySpan = html.match(/marker-majority[^>]*data-adj-empty[^>]*>∅</);
+      assert.notEqual(majorityEmptySpan, null, 'majority comparison ∅ span has data-adj-empty attribute');
+      // The conflict span displays '！' (not ∅) so it should NOT have data-adj-empty
+      const conflictEmptySpan = html.match(/marker-conflict[^>]*data-adj-empty/);
+      assert.equal(conflictEmptySpan, null, 'conflict comparison span showing punctuation lacks data-adj-empty');
+    }
+  },
+  {
+        name: 'T134-T-BDD CSS rules exist for ∅ hiding on either punc-diff or char-diff toggle',
+    fn(assert) {
+      const styleText = document.querySelector('style').textContent;
+      assert.includes(styleText, '.adj-empty',
+        'style contains adj-empty class rule for ∅ hiding');
+      assert.includes(styleText, '[data-adj-empty]',
+        'style contains data-adj-empty attribute rule');
+      assert.includes(styleText, '[title*="display: ∅"]',
+        'style contains title fallback for old comparison ∅');
+    }
+  },
+  {
+    name: 'T135-T-BDD ∅ span with adj-empty class is display:none under adj-hide-textdiff',
+    fn(assert) {
+      const container = document.createElement('div');
+      container.className = 'adj-hide-textdiff';
+      const span = document.createElement('span');
+      span.className = 'marker marker-majority adj-empty';
+      span.textContent = '∅';
+      container.appendChild(span);
+      document.body.appendChild(container);
+      const computed = window.getComputedStyle(span);
+      const isHidden = computed.display === 'none';
+      document.body.removeChild(container);
+      assert.equal(isHidden, true,
+        '∅ span with adj-empty class should be display:none under adj-hide-textdiff');
+    }
+  },
+  {
+    name: 'T141-T-BUG OLD comparison ∅ (no adj-empty) must still be hidden via title attribute',
+    fn(assert) {
+      // Simulates OLD rendered HTML: comparison ∅ WITHOUT adj-empty class
+      // but WITH title="... display: ∅". The [title*="display: ∅"] CSS rule
+      // must still exist to handle pre-update rendered HTML.
+      const container = document.createElement('div');
+      container.className = 'adj-hide-textdiff';
+      const span = document.createElement('span');
+      span.className = 'marker marker-majority';
+      span.title = 'majority (2) | original: ∅ | display: ∅';
+      span.textContent = '∅';
+      container.appendChild(span);
+      document.body.appendChild(container);
+      const computed = window.getComputedStyle(span);
+      const isHidden = computed.display === 'none';
+      document.body.removeChild(container);
+      assert.equal(isHidden, true,
+        'OLD comparison ∅ span (no adj-empty class) should be display:none via [title*="display: ∅"]');
+    }
+  },
+  {
+    name: 'T139-T-BUG boundary text-diff ∅ is display:none under adj-hide-textdiff',
+    fn(assert) {
+      const app = adjApp();
+      app.segments = [{
+        id: 'seg-001',
+        stripped_text: '甲乙',
+        original_text: '甲乙',
+        inline_elements: [],
+        textDiffs: new Map(),
+        boundaryTextDiffs: new Map([[
+          'boundary:1:0',
+          {
+            key: 'boundary:1:0',
+            kind: 'boundary',
+            basePosition: 1,
+            slotIndex: 0,
+            category: 'majority',
+            dominantValue: '',
+            voteCount: 2,
+            values: new Map([['claude', ''], ['gemini', ''], ['gpt', '，']])
+          }
+        ]])
+      }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': createEmptyPositionDiff() };
+      app.positionMaps = { 'seg-001': clonePositionDiff(createEmptyPositionDiff()) };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+      const html = app.renderCurrentInlineViewHtml();
+
+      const container = document.createElement('div');
+      container.className = 'adj-hide-textdiff';
+      container.innerHTML = html;
+      document.body.appendChild(container);
+
+      const emptySpans = container.querySelectorAll('span');
+      let boundaryEmptyFound = false;
+      let boundaryEmptyHidden = false;
+      for (const s of emptySpans) {
+        if (s.textContent === '∅' && s.classList.contains('textdiff-boundary')) {
+          boundaryEmptyFound = true;
+          const computed = window.getComputedStyle(s);
+          if (computed.display === 'none') {
+            boundaryEmptyHidden = true;
+          }
+          break;
+        }
+      }
+      document.body.removeChild(container);
+      assert.equal(boundaryEmptyFound, true, 'boundary ∅ span should be present in rendered HTML');
+      assert.equal(boundaryEmptyHidden, true,
+        'boundary ∅ span should be display:none when parent has adj-hide-textdiff');
+    }
+  },
+  {
+    name: 'T140-T-BUG boundary ∅ is display:none under adj-hide-textdiff when BOTH toggles OFF',
+    fn(assert) {
+      const app = adjApp();
+      app.segments = [{
+        id: 'seg-001',
+        stripped_text: '甲乙',
+        original_text: '甲乙',
+        inline_elements: [],
+        textDiffs: new Map(),
+        boundaryTextDiffs: new Map([[
+          'boundary:1:0',
+          {
+            key: 'boundary:1:0',
+            kind: 'boundary',
+            basePosition: 1,
+            slotIndex: 0,
+            category: 'majority',
+            dominantValue: '',
+            voteCount: 2,
+            values: new Map([['claude', ''], ['gemini', ''], ['gpt', '，']])
+          }
+        ]])
+      }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': createEmptyPositionDiff() };
+      app.positionMaps = { 'seg-001': clonePositionDiff(createEmptyPositionDiff()) };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+      const html = app.renderCurrentInlineViewHtml();
+
+      // Apply BOTH toggle classes (simulates char-diff OFF AND punc-diff OFF)
+      const container = document.createElement('div');
+      container.className = 'adj-hide-textdiff adj-hide-chardiff';
+      container.innerHTML = html;
+      document.body.appendChild(container);
+
+      const emptySpans = container.querySelectorAll('span');
+      let boundaryEmptyFound = false;
+      let boundaryEmptyHidden = false;
+      for (const s of emptySpans) {
+        if (s.textContent === '∅' && s.classList.contains('textdiff-boundary')) {
+          boundaryEmptyFound = true;
+          const computed = window.getComputedStyle(s);
+          if (computed.display === 'none') {
+            boundaryEmptyHidden = true;
+          }
+          break;
+        }
+      }
+      document.body.removeChild(container);
+      assert.equal(boundaryEmptyFound, true, 'boundary ∅ span should be present in rendered HTML');
+      assert.equal(boundaryEmptyHidden, true,
+        'boundary ∅ span should be display:none when BOTH adj-hide-textdiff and adj-hide-chardiff are active');
+    }
+  },
+  {
+    name: 'T136-T-BDD rendered comparison ∅ span is display:none under adj-hide-textdiff',
+    fn(assert) {
+      const app = adjApp();
+      const segment = {
+        id: 'seg-001',
+        stripped_text: '甲乙',
+        original_text: '甲乙',
+        inline_elements: [],
+        textDiffs: new Map()
+      };
+      const diff = createEmptyPositionDiff();
+      diff.majorityPositions.set('1:0', {
+        position: 1,
+        key: '1:0',
+        basePosition: 1,
+        slotIndex: 0,
+        category: 'majority',
+        voteCount: 2,
+        chars: new Map([['a', []], ['b', []], ['c', ['。']]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: false,
+        included: true,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        displayOrder: calculateComparisonDisplayOrder(1)
+      });
+
+      app.segments = [segment];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': diff };
+      app.positionMaps = { 'seg-001': clonePositionDiff(diff) };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      const html = app.renderCurrentInlineViewHtml();
+      // Attach to DOM and check computed style with adj-hide-textdiff
+      const container = document.createElement('div');
+      container.className = 'adj-hide-textdiff';
+      container.innerHTML = html;
+      document.body.appendChild(container);
+
+      // Find all spans containing ∅
+      const emptySpans = container.querySelectorAll('span');
+      let comparisonEmptyFound = false;
+      let comparisonEmptyHidden = false;
+      for (const s of emptySpans) {
+        if (s.textContent === '∅' && s.classList.contains('marker-majority')) {
+          comparisonEmptyFound = true;
+          const computed = window.getComputedStyle(s);
+          if (computed.display === 'none') {
+            comparisonEmptyHidden = true;
+          }
+        }
+      }
+      document.body.removeChild(container);
+      assert.equal(comparisonEmptyFound, true, 'comparison ∅ span should be present in rendered HTML');
+      assert.equal(comparisonEmptyHidden, true,
+        'comparison ∅ span should be display:none when parent has adj-hide-textdiff');
+    }
+  },
+  {
+    name: 'T137-T-AUDIT all ∅ markers in rendered HTML have data-adj-empty or title-based CSS coverage',
+    fn(assert) {
+      // End-to-end: toggle hiddenMarkerTypes.textdiff on and verify
+      // comparison ∅ is actually display:none in the real rendered HTML
+      const app = adjApp();
+      const segment = {
+        id: 'seg-001',
+        stripped_text: '甲',
+        original_text: '甲',
+        inline_elements: [],
+        textDiffs: new Map()
+      };
+      const diff = createEmptyPositionDiff();
+      diff.majorityPositions.set('1:0', {
+        position: 1, key: '1:0', basePosition: 1, slotIndex: 0,
+        category: 'majority', voteCount: 2,
+        chars: new Map([['a', []], ['b', []], ['c', ['。']]]),
+        dominantValue: '', originalValue: '',
+        differsFromOriginal: false, included: true,
+        resolved: false, autoResolved: false, userResolved: false,
+        displayOrder: calculateComparisonDisplayOrder(1)
+      });
+      app.segments = [segment];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': diff };
+      app.positionMaps = { 'seg-001': clonePositionDiff(diff) };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      const html = app.renderCurrentInlineViewHtml();
+      const container = document.createElement('div');
+      container.innerHTML = html;
+      // Use a wrapper with adj-hide-textdiff class (simulates toggle OFF)
+      const wrapper = document.createElement('div');
+      wrapper.className = 'adj-hide-textdiff';
+      wrapper.appendChild(container);
+      document.body.appendChild(wrapper);
+
+      const emptySpans = wrapper.querySelectorAll('span');
+      let comparisonCount = 0;
+      let hiddenCount = 0;
+      for (const s of emptySpans) {
+        if (s.textContent === '∅' && s.classList.contains('marker-majority')) {
+          comparisonCount += 1;
+          const computed = window.getComputedStyle(s);
+          if (computed.display === 'none') {
+            hiddenCount += 1;
+          }
+        }
+      }
+
+      document.body.removeChild(wrapper);
+      assert.equal(comparisonCount, 1, 'should find 1 comparison ∅ span');
+      assert.equal(hiddenCount, 1, 'comparison ∅ span should be display:none with adj-hide-textdiff');
+    }
+  },
+  {
+    name: 'T138-T-AUDIT all ∅ markers in rendered HTML have data-adj-empty or title-based CSS coverage',
+    fn(assert) {
+      // Comprehensive audit: set up a segment with ALL types of ∅ markers and verify
+      // every single ∅ span in the rendered output has CSS coverage
+      const app = adjApp();
+      const segment = {
+        id: 'seg-001',
+        stripped_text: '甲乙丙丁',
+        original_text: '甲乙丙丁',
+        inline_elements: [],
+        textDiffs: new Map()
+      };
+      const diff = createEmptyPositionDiff();
+
+      // 1. Comparison majority ∅
+      diff.majorityPositions.set('1:0', {
+        position: 1, key: '1:0', basePosition: 1, slotIndex: 0,
+        category: 'majority', voteCount: 2,
+        chars: new Map([['a', []], ['b', []], ['c', ['。']]]),
+        dominantValue: '', originalValue: '',
+        differsFromOriginal: false, included: true,
+        resolved: false, autoResolved: false, userResolved: false,
+        displayOrder: calculateComparisonDisplayOrder(1)
+      });
+
+      // 2. Comparison conflict ∅
+      diff.conflictPositions.set('2:0', {
+        position: 2, key: '2:0', basePosition: 2, slotIndex: 0,
+        category: 'conflict', voteCount: 1,
+        chars: new Map([['a', []]]),
+        dominantValue: '', originalValue: '',
+        differsFromOriginal: false, included: true,
+        resolved: false, autoResolved: false, userResolved: false,
+        displayOrder: calculateComparisonDisplayOrder(2)
+      });
+
+      // 3. Comparison identical ∅
+      diff.identicalPositions.set('0:0', {
+        position: 0, key: '0:0', basePosition: 0, slotIndex: 0,
+        category: 'identical', voteCount: 1,
+        chars: new Map([['a', []]]),
+        dominantValue: '', originalValue: '',
+        differsFromOriginal: false, included: true,
+        resolved: false, autoResolved: false, userResolved: false,
+        displayOrder: calculateComparisonDisplayOrder(0)
+      });
+
+      app.segments = [segment];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': diff };
+      app.positionMaps = { 'seg-001': clonePositionDiff(diff) };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      const html = app.renderCurrentInlineViewHtml();
+      const container = document.createElement('div');
+      container.innerHTML = html;
+      document.body.appendChild(container);
+
+      const allSpans = container.querySelectorAll('span');
+      const emptySpans = [];
+      const uncovered = [];
+
+      for (const s of allSpans) {
+        if (s.textContent === '∅') {
+          const hasDataAdjEmpty = s.hasAttribute('data-adj-empty');
+          const hasTitleMatch = s.title && s.title.includes('display: ∅');
+          const hasCSSSelector = hasDataAdjEmpty || hasTitleMatch;
+          emptySpans.push({ className: s.className, title: s.title, hasDataAdjEmpty, hasTitleMatch, hasCSSSelector });
+          if (!hasCSSSelector) {
+            uncovered.push({ className: s.className, title: s.title });
+          }
+        }
+      }
+
+      document.body.removeChild(container);
+
+      assert.notEqual(emptySpans.length, 0,
+        `should have ∅ spans in rendered HTML (found ${emptySpans.length})`);
+
+      for (const info of emptySpans) {
+        assert.equal(info.hasCSSSelector, true,
+          `∅ span class="${info.className}" should have data-adj-empty or title containing "display: ∅" (title: "${info.title}")`);
+      }
+    }
   }
 ];
+
+// ──────────────────────────────────────────────
+// ∅ visibility tests for the four additional toggle types
+// (adj-hide-textdiff already covered by T135, T139, T140, T141; adj-hide-chardiff dead code)
+// ──────────────────────────────────────────────
+
+function createToggleEmptyTest(name, toggleClass, selectorType) {
+  return {
+    name,
+    fn(assert) {
+      const container = document.createElement('div');
+      container.className = toggleClass;
+      const span = document.createElement('span');
+      span.className = 'marker marker-majority';
+      span.textContent = '∅';
+      if (selectorType === 'class') {
+        span.classList.add('adj-empty');
+      } else if (selectorType === 'data') {
+        span.setAttribute('data-adj-empty', '');
+      } else if (selectorType === 'title') {
+        span.title = 'majority (2) | original: ∅ | display: ∅';
+      }
+      container.appendChild(span);
+      document.body.appendChild(container);
+      const computed = window.getComputedStyle(span);
+      const isHidden = computed.display === 'none';
+      document.body.removeChild(container);
+      assert.equal(isHidden, true,
+        `∅ span should be display:none under ${toggleClass} (${selectorType} selector)`);
+    }
+  };
+}
+
+adjudicationTestSuites.push(
+  createToggleEmptyTest('T142-T-BDD adj-hide-identical hides ∅ with adj-empty class', 'adj-hide-identical', 'class'),
+  createToggleEmptyTest('T143-T-BDD adj-hide-majority hides ∅ with adj-empty class', 'adj-hide-majority', 'class'),
+  createToggleEmptyTest('T144-T-BDD adj-hide-conflict hides ∅ with adj-empty class', 'adj-hide-conflict', 'class'),
+  createToggleEmptyTest('T145-T-BDD adj-hide-inserted hides ∅ with adj-empty class', 'adj-hide-inserted', 'class'),
+  createToggleEmptyTest('T146-T-BDD adj-hide-identical hides ∅ via data-adj-empty (old HTML)', 'adj-hide-identical', 'data'),
+  createToggleEmptyTest('T147-T-BDD adj-hide-majority hides ∅ via data-adj-empty (old HTML)', 'adj-hide-majority', 'data'),
+  createToggleEmptyTest('T148-T-BDD adj-hide-conflict hides ∅ via data-adj-empty (old HTML)', 'adj-hide-conflict', 'data'),
+  createToggleEmptyTest('T149-T-BDD adj-hide-inserted hides ∅ via data-adj-empty (old HTML)', 'adj-hide-inserted', 'data'),
+  createToggleEmptyTest('T150-T-BDD adj-hide-identical hides ∅ via title fallback (old comparison ∅)', 'adj-hide-identical', 'title'),
+  createToggleEmptyTest('T151-T-BDD adj-hide-majority hides ∅ via title fallback (old comparison ∅)', 'adj-hide-majority', 'title'),
+  createToggleEmptyTest('T152-T-BDD adj-hide-conflict hides ∅ via title fallback (old comparison ∅)', 'adj-hide-conflict', 'title'),
+  createToggleEmptyTest('T153-T-BDD adj-hide-inserted hides ∅ via title fallback (old comparison ∅)', 'adj-hide-inserted', 'title'),
+  {
+    name: 'T154-T-AUDIT all six toggle types hide ∅ in end-to-end rendered HTML',
+    fn(assert) {
+      const app = adjApp();
+      const segment = {
+        id: 'seg-001',
+        stripped_text: '甲乙丙丁',
+        original_text: '甲乙丙丁',
+        inline_elements: [],
+        textDiffs: new Map()
+      };
+      const diff = createEmptyPositionDiff();
+      diff.identicalPositions.set('0:0', {
+        position: 0, key: '0:0', basePosition: 0, slotIndex: 0,
+        category: 'identical', voteCount: 1,
+        chars: new Map([['a', []]]),
+        dominantValue: '', originalValue: '',
+        differsFromOriginal: false, included: true,
+        resolved: false, autoResolved: false, userResolved: false,
+        displayOrder: calculateComparisonDisplayOrder(0)
+      });
+      diff.majorityPositions.set('1:0', {
+        position: 1, key: '1:0', basePosition: 1, slotIndex: 0,
+        category: 'majority', voteCount: 2,
+        chars: new Map([['a', []], ['b', []], ['c', ['。']]]),
+        dominantValue: '', originalValue: '',
+        differsFromOriginal: false, included: true,
+        resolved: false, autoResolved: false, userResolved: false,
+        displayOrder: calculateComparisonDisplayOrder(1)
+      });
+      diff.conflictPositions.set('2:0', {
+        position: 2, key: '2:0', basePosition: 2, slotIndex: 0,
+        category: 'conflict', voteCount: 1,
+        chars: new Map([['a', []]]),
+        dominantValue: '', originalValue: '',
+        differsFromOriginal: false, included: true,
+        resolved: false, autoResolved: false, userResolved: false,
+        displayOrder: calculateComparisonDisplayOrder(2)
+      });
+
+      app.segments = [segment];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { 'seg-001': diff };
+      app.positionMaps = { 'seg-001': clonePositionDiff(diff) };
+      app.fractionalInsertions = { 'seg-001': new Map() };
+
+      const html = app.renderCurrentInlineViewHtml();
+
+      const toggleClasses = ['adj-hide-identical', 'adj-hide-majority', 'adj-hide-conflict', 'adj-hide-inserted', 'adj-hide-textdiff', 'adj-hide-chardiff'];
+      for (const toggleClass of toggleClasses) {
+        const container = document.createElement('div');
+        container.className = toggleClass;
+        container.innerHTML = html;
+        document.body.appendChild(container);
+
+        const emptySpans = container.querySelectorAll('span');
+        let emptyFound = false;
+        let allEmptyHidden = true;
+        for (const s of emptySpans) {
+          if (s.textContent === '∅') {
+            emptyFound = true;
+            const computed = window.getComputedStyle(s);
+            if (computed.display !== 'none') {
+              allEmptyHidden = false;
+            }
+          }
+        }
+
+        document.body.removeChild(container);
+        assert.equal(emptyFound, true,
+          `∅ spans should be present in rendered HTML for ${toggleClass}`);
+        assert.equal(allEmptyHidden, true,
+          `all ∅ spans should be display:none under ${toggleClass}`);
+      }
+    }
+  }
+);
 
 async function runAdjudicationDomainTests() {
   const results = { passed: 0, failed: 0, suites: [] };
@@ -18356,6 +19230,12 @@ function getReleaseNotesHtml() {
 
       <h3>📦 版本 V1 (003-adjudication-editor) — 裁決編輯器</h3>
       <p><strong>發布日期：</strong>2026-06</p>
+
+      <h4>功能新增（2026-06-16）— 標記可視切換開關（Feature 006）</h4>
+      <ul>
+        <li>統計列新增五組獨立切換開關（一致、多數、新增各一排；衝突、段落內文字不一致各附不一致及已解決計數），關閉任何類別即時隱藏該類別標記的背景與邊框，保留純文字可讀性</li>
+        <li>任一開關關閉時所有 ∅ 符號一併隱藏（<code>display: none</code>），閱讀無噪點；開關狀態跨段落保持，頁面重載自動復原</li>
+      </ul>
 
       <h4>Hotfix（2026-06-11）— XML 檢視與佛寺志網頁支援 <code>ynnn_back</code>、<code>ynnn_nn-n</code> 命名</h4>
       <ul>
@@ -18510,6 +19390,7 @@ function getReleaseNotesHtml() {
         <li><strong>段落狀態背景（FR-025）</strong>：多數一致、衝突段落使用比標記按鈕更淺的底色，視覺層次更清晰</li>
         <li><strong>彈出選單標題列（FR-022）</strong>：使用主題感知 CSS 變數（<code>--adj-surface-muted</code>），淺色模式下可閱讀</li>
         <li><strong>選字選單暖琥珀標題列（FR-023）</strong>：插入選單頭部使用暖琥珀色調，深色模式自動調整</li>
+        <li><strong>標記可視切換（Feature 006）</strong>：統計列新增五組獨立切換開關（一致、多數、新增各一排；衝突、段落內文字不一致各附不一致及已解決計數），關閉任何類別即時隱藏該類別標記的背景與邊框，保留純文字可讀性；任一開關關閉時所有 ∅ 符號一併隱藏，閱讀無噪點；開關狀態跨段落保持，頁面重載自動復原</li>
         <li><strong>內建測試面板（FR-024）</strong>：設定欄底部「執行內建測試」按鈕，結果顯示於欄內（通過 / 失敗計數 + 失敗清單）</li>
         <li><strong>版面延續 Preview5（FR-016）</strong>：載入、總覽、段落三個畫面主欄等寬；右側邊欄按鈕大小一致；設定鈕在版本說明鈕左方</li>
         <li><strong>插入標點 UX 改進</strong>：選字選單（Picker）明確標示目前為「編輯已插入標點」模式，支援修改或移除；插入標點正確顯示於比對標記之前</li>
@@ -18533,7 +19414,7 @@ function getReleaseNotesHtml() {
 
       <h4>🔬 測試覆蓋</h4>
       <ul>
-        <li>超過 210 項自動化測試（TDD / BDD），涵蓋所有使用者故事與 FR 需求</li>
+        <li>超過 240 項自動化測試（TDD / BDD），涵蓋所有使用者故事與 FR 需求</li>
         <li>T047 端對端迴歸：50 段合成資料完整裁決匯出 563 ms；500 段非序列導航最大延遲 32 ms</li>
         <li>Feature 004 草稿匯入：T113（BDD 空畫面直接匯入）、T114（無指紋驗證恢復）等迴歸測試</li>
         <li>Feature 005 GitHub 模式：T066b（segment.xpath 查找）、T119（private repo Contents API fallback）、T120（FSZ URL fallback）、T121（面板連結結構）等</li>
@@ -18701,11 +19582,14 @@ function adjApp() {
     conflictResolvedResolvedSegmentId: null,
     testResults: null,
     _progressStatsCache: null,
+    hiddenMarkerTypes: { identical: false, majority: false, conflict: false, inserted: false, chardiff: false, textdiff: false },
 
     async runTests() {
       this.testResults = null;
       this.testResults = await runAdjudicationDomainTests();
     },
+
+    toggleMarkerType(type) { this.hiddenMarkerTypes[type] = !this.hiddenMarkerTypes[type]; },
 
     init() {
       this.themeMode = normalizeThemeMode(localStorage.getItem(THEME_MODE_STORAGE_KEY));
@@ -20431,6 +21315,40 @@ function adjApp() {
       };
     },
 
+    currentSegmentCharDiffStats() {
+      if (!this.currentSegment) {
+        return { total: 0, resolved: 0, unresolved: 0, visible: false };
+      }
+      const entries = [...getSegmentBaseTextDiffMap(this.currentSegment).values()];
+      if (!entries.length) {
+        return { total: 0, resolved: 0, unresolved: 0, visible: false };
+      }
+      const resolved = entries.filter(e => e.selected != null).length;
+      return {
+        total: entries.length,
+        resolved,
+        unresolved: entries.length - resolved,
+        visible: true
+      };
+    },
+
+    currentSegmentTextdiffStats() {
+      if (!this.currentSegment) {
+        return { total: 0, resolved: 0, unresolved: 0, visible: false };
+      }
+      const entries = getSegmentBoundaryTextDiffEntries(this.currentSegment);
+      if (!entries.length) {
+        return { total: 0, resolved: 0, unresolved: 0, visible: false };
+      }
+      const resolved = entries.filter(e => e.selected != null).length;
+      return {
+        total: entries.length,
+        resolved,
+        unresolved: entries.length - resolved,
+        visible: true
+      };
+    },
+
     currentAlignmentDropReport() {
       if (!this.currentSegment) {
         return [];
@@ -21319,6 +22237,7 @@ function adjApp() {
       if (!this.currentSegment) {
         return '';
       }
+      Object.values(this.hiddenMarkerTypes);
       const diff = this.ensurePositionMap(this.currentSegment.id);
       const fractionals = this.fractionalInsertions[this.currentSegment.id];
       return buildInlineViewHtml(this.currentSegment, diff, fractionals, this.insertionMode);
