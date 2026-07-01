@@ -18282,6 +18282,116 @@ const adjudicationTestSuites = [
       localStorage.removeItem(SESSION_STORAGE_KEY);
     }
   },
+  {
+    name: 'T115-T-BDD restored progress recomputes top paragraph statistics when segment-view cache is stale',
+    async fn(assert) {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+
+      const { payload } = await createSavedDraftPayload({
+        markerTexts: ['甲乙', '丙丁', '戊己'],
+        modelDefs: [
+          { fileName: 'claude_repunctuated.json', model: 'claude', texts: ['甲，乙', '丙，丁', '戊，己'] },
+          { fileName: 'gemini_repunctuated.json', model: 'gemini', texts: ['甲，乙', '丙，丁', '戊。己'] },
+          { fileName: 'gpt_repunctuated.json', model: 'gpt', texts: ['甲，乙', '丙。丁', '戊；己'] }
+        ],
+        currentSegmentIdx: 1,
+        view: 'segment',
+        filter: 'all'
+      });
+
+      const app = adjApp();
+      attachDraftFeatureRefs(app);
+      app.view = 'segment';
+      app._progressStatsCache = {
+        total: 0,
+        done: 0,
+        pending: 0,
+        identical: 0,
+        majority: 0,
+        conflict: 0,
+        resolved: 0,
+        withTextDiff: 0,
+        needsReview: 0,
+        conflictPunctOnly: 0,
+        conflictTextOnly: 0,
+        conflictBoth: 0
+      };
+
+      app.restoreSession(payload);
+      const stats = app.progressStats;
+
+      assert.equal(stats.total, 3, 'Given a restored progress file Then the top paragraph total is recomputed from restored segments');
+      assert.equal(stats.identical, 1, 'Given restored progress Then identical paragraph count is not taken from the stale zero cache');
+      assert.equal(stats.majority, 1, 'Given restored progress Then majority paragraph count is not taken from the stale zero cache');
+      assert.equal(stats.conflict, 1, 'Given restored progress Then conflict paragraph count is not taken from the stale zero cache');
+      assert.equal(stats.needsReview, 1, 'Given restored progress Then the top needs-review count matches restored unresolved conflict paragraphs');
+
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+  },
+  {
+    name: 'T115a-T-BDD segment edits invalidate cached top paragraph statistics',
+    fn(assert) {
+      const app = adjApp();
+      const segments = [
+        { id: '001', stripped_text: '甲乙', original_text: '甲乙', inline_elements: [], textDiffs: new Map(), boundaryTextDiffs: new Map() }
+      ];
+      const diff = createEmptyPositionDiff();
+      diff.conflictPositions.set('1:0', {
+        key: '1:0',
+        position: 1,
+        basePosition: 1,
+        slotIndex: 0,
+        category: 'conflict',
+        voteCount: 1,
+        chars: new Map([['claude', ['，']], ['gemini', ['。']], ['gpt', ['；']]]),
+        dominantValue: '',
+        originalValue: '',
+        differsFromOriginal: true,
+        included: false,
+        resolved: false,
+        autoResolved: false,
+        userResolved: false,
+        selectedModel: null,
+        resolvedValue: null,
+        displayOrder: calculateComparisonDisplayOrder(1)
+      });
+
+      app.job = {
+        schemaVersion: '1',
+        sourceFile: 'test.xml',
+        sourceMarkers: 'test_markers.json',
+        stripPunctuationChars: '，。；',
+        candidatesBySegment: {
+          '001': [
+            { model: 'claude', repunctuatedText: '甲，乙', positions: new Set([1]), charMap: new Map([[1, ['，']]]) },
+            { model: 'gemini', repunctuatedText: '甲。乙', positions: new Set([1]), charMap: new Map([[1, ['。']]]) },
+            { model: 'gpt', repunctuatedText: '甲；乙', positions: new Set([1]), charMap: new Map([[1, ['；']]]) }
+          ]
+        },
+        models: ['claude', 'gemini', 'gpt'],
+        modelSummaries: []
+      };
+      app.segments = segments;
+      app.originalDiffs = { '001': diff };
+      app.positionMaps = {};
+      app.fractionalInsertions = {};
+      app.adjudications = createUnreviewedAdjudications(segments);
+      app.filter = 'all';
+      app.view = 'segment';
+      app.currentSegmentIdx = 0;
+
+      const before = app.progressStats;
+      assert.equal(before.needsReview, 1, 'precondition: unresolved conflict is counted before the edit');
+
+      app.ResolvePosition('001', '1:0', true, '，', 'claude');
+      const after = app.progressStats;
+
+      assert.equal(after.needsReview, 0, 'Given a cached segment-view header When a conflict is resolved Then needs-review recomputes');
+      assert.equal(after.resolved, 1, 'Given a cached segment-view header When a conflict is resolved Then resolved count recomputes');
+      assert.equal(after.done, 1, 'Given a cached segment-view header When a conflict is resolved Then done count recomputes');
+    }
+  },
 
   // ─── Phase 21 RED: finalizeAndExport must NOT commit unresolved segments ────
 
@@ -19303,6 +19413,7 @@ function getReleaseNotesHtml() {
       <ul>
         <li>「匯出進度檔」改由目前記憶體中的工作階段即時產生 JSON，不再下載最後一次成功寫入 <code>localStorage</code> 的舊快照</li>
         <li>匯入進度檔時即使 <code>localStorage</code> 因容量限制拒絕寫入，仍會直接恢復檔案內容，避免大型進度檔無法載入</li>
+        <li>恢復進度與段落裁決變更會清除 <code>progressStats</code> / <code>pendingSegments()</code> 快取，避免頂端「完全一致 / 多數一致 / 需處理」統計停留在舊值或全 0</li>
         <li>修復約 6 MB 工作階段中，瀏覽器自動儲存停止後，手動匯出的進度仍停留在數日前狀態的問題</li>
       </ul>
 
@@ -19478,7 +19589,7 @@ function getReleaseNotesHtml() {
         <li><strong>插入標點位置</strong>（<code>pickerResolvedPlacement</code>）：插入的標點現在出現於同位置的比對標記之前，而非之後</li>
         <li><strong>匯出時的無條件提交</strong>：<code>finalizeAndExport</code> 不再對尚有未解衝突的段落執行 <code>commitSegmentEdit</code>，防止部分裁決結果被意外寫入</li>
         <li><strong>XPath 文脈查找</strong>：<code>resolveXmlContextForSegment</code> 改以 <code>segment.xpath</code>（而非 <code>inline_elements[0].xpath</code>）進行 XML 節點定位，修正 token 模式下私有倉庫的 XPath 查找失敗問題</li>
-        <li><strong>進度檔 stale cache</strong>：手動匯出不再使用過期的 browser cache 內容；匯入大型進度檔時即使快取寫入失敗，也會保留檔案中的段落、裁決、position maps 與 fractional insertions</li>
+        <li><strong>進度檔 stale cache</strong>：手動匯出不再使用過期的 browser cache 內容；匯入大型進度檔時即使快取寫入失敗，也會保留檔案中的段落、裁決、position maps 與 fractional insertions；恢復與裁決變更後會刷新頂端段落統計快取</li>
       </ul>
 
       <h4>⚡ 效能改善</h4>
@@ -19495,7 +19606,7 @@ function getReleaseNotesHtml() {
         <li>T047 端對端迴歸：50 段合成資料完整裁決匯出 563 ms；500 段非序列導航最大延遲 32 ms</li>
         <li>Feature 004 草稿匯入：T113（BDD 空畫面直接匯入）、T114（無指紋驗證恢復）等迴歸測試</li>
         <li>Feature 005 GitHub 模式：T066b（segment.xpath 查找）、T119（private repo Contents API fallback）、T120（FSZ URL fallback）、T121（面板連結結構）等</li>
-        <li>工作階段迴歸：T142 驗證 <code>localStorage</code> 配額拒絕時仍可匯入進度；T143 驗證手動匯出使用即時工作階段而非 stale cache</li>
+        <li>工作階段迴歸：T142 驗證 <code>localStorage</code> 配額拒絕時仍可匯入進度；T143 驗證手動匯出使用即時工作階段而非 stale cache；T115 / T115a 驗證恢復進度與段落裁決後頂端統計會重新計算</li>
         <li>內建測試執行器（hermetic runner）：每次執行前快照並還原 localStorage XML 來源設定，確保測試環境與瀏覽器持久化設定隔離</li>
         <li>Preview5 的 559 項既有測試（CJK 異體字、LCS、位置比對）零迴歸</li>
       </ul>
@@ -19668,6 +19779,13 @@ function adjApp() {
     },
 
     toggleMarkerType(type) { this.hiddenMarkerTypes[type] = !this.hiddenMarkerTypes[type]; },
+
+    invalidateProgressCaches() {
+      this._progressStatsCache = null;
+      const raw = (typeof Alpine !== 'undefined' && Alpine.raw) ? Alpine.raw(this) : this;
+      raw._pendingCacheRef = null;
+      raw._pendingCache = null;
+    },
 
     init() {
       this.themeMode = normalizeThemeMode(localStorage.getItem(THEME_MODE_STORAGE_KEY));
@@ -20350,6 +20468,7 @@ function adjApp() {
         }
         this.fractionalInsertions = fractionalRestored;
         this.restoreCompletedLiveSegmentEdits();
+        this.invalidateProgressCaches();
         const restoredFilter = parsed.filter || 'pending';
         const visibleSegments = restoredFilter === 'pending'
           ? this.pendingSegments()
@@ -20866,6 +20985,7 @@ function adjApp() {
           }
         });
 
+        this.invalidateProgressCaches();
         this.view = 'overview';
       } catch (error) {
         this.error = error.message;
@@ -21301,6 +21421,7 @@ function adjApp() {
 
       if (changed) {
         this.adjudications = nextAdjudications;
+        this.invalidateProgressCaches();
       }
       return changed;
     },
@@ -21336,6 +21457,7 @@ function adjApp() {
       };
       this.insertionMode = false;
       this.exportCompleted = false;
+      this.invalidateProgressCaches();
       this.normalizeSegmentFilter(segmentId);
       if (changed) {
         this.debouncedSaveSession();
@@ -21476,6 +21598,7 @@ function adjApp() {
       this.positionMaps = nextPositionMaps;
       this.fractionalInsertions = nextFractionals;
       this.exportCompleted = false;
+      this.invalidateProgressCaches();
       this.normalizeSegmentFilter(this.currentSegment?.id || segmentId);
       this.debouncedSaveSession();
     },
@@ -22474,6 +22597,7 @@ function adjApp() {
       this.positionMaps = { ...this.positionMaps, [segmentId]: diff };
       this.closePopup();
       this.exportCompleted = false;
+      this.invalidateProgressCaches();
 
       // FR-026c: auto-open conflict-resolved dialog when last conflict resolved on current segment
       if (resolveHasNext) {
@@ -22501,6 +22625,7 @@ function adjApp() {
       entry.selected = modelName;
       this.exportCompleted = false;
       this.closePopup();
+      this.invalidateProgressCaches();
       this.syncSegmentCompletion(segmentId);
       this.debouncedSaveSession();
     },
@@ -22548,6 +22673,7 @@ function adjApp() {
         };
         this.closePicker();
         this.exportCompleted = false;
+        this.invalidateProgressCaches();
         this.debouncedSaveSession();
       } catch (error) {
         this.error = error.message;
@@ -22564,6 +22690,7 @@ function adjApp() {
           [segmentId]: fractionals
         };
         this.exportCompleted = false;
+        this.invalidateProgressCaches();
         this.debouncedSaveSession();
         return;
       }
@@ -22576,6 +22703,7 @@ function adjApp() {
         entry.resolvedValue = '';
         entry.selectedModel = 'none';
         this.positionMaps = { ...this.positionMaps, [segmentId]: diff };
+        this.invalidateProgressCaches();
       }
       if (!this.syncSegmentCompletion(segmentId)) {
         this.normalizeSegmentFilter(this.currentSegment?.id || segmentId);
