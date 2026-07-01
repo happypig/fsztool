@@ -2739,7 +2739,7 @@
         <h4>工作階段</h4>
         <div class="adj-session-actions-grid">
           <button class="secondary adj-settings-action" :disabled="!job" @click="saveSession(); $event.target.textContent = '✓ 已儲存'; setTimeout(() => $event.target.textContent = '立即儲存進度', 1500)">立即儲存進度</button>
-          <button class="secondary outline adj-settings-action" :disabled="!hasSavedSession" @click="exportSession()">匯出進度檔</button>
+          <button class="secondary outline adj-settings-action" :disabled="!job && !hasSavedSession" @click="exportSession()">匯出進度檔</button>
           <label class="secondary outline adj-settings-action" role="button" style="text-align:center; cursor:pointer;" @keydown.enter.prevent="$refs.settingsImportInput.click()" @keydown.space.prevent="$refs.settingsImportInput.click()" tabindex="0">匯入進度檔
             <input x-ref="settingsImportInput" class="adj-hidden-file-input" type="file" accept=".json,application/json" @change="importSessionFromFile($event.target.files[0]); $event.target.value = ''">
           </label>
@@ -16299,6 +16299,24 @@ const adjudicationTestSuites = [
     }
   },
   {
+    name: 'T142-T-REG restoreSession applies imported progress even when browser cache quota rejects it',
+    async fn(assert) {
+      const { payload } = await createSavedDraftPayload({
+        currentSegmentIdx: 1,
+        view: 'segment',
+        filter: 'all'
+      });
+
+      const app = adjApp();
+      app.persistSessionPayload = () => false;
+      app.restoreSession(payload);
+
+      assert.equal(app.view, 'segment', 'imported session still opens the saved segment view');
+      assert.equal(app.currentSegment.id, '002', 'imported session keeps current segment position');
+      assert.equal(app.progressStats.done >= 1, true, 'imported adjudication progress is restored even without localStorage');
+    }
+  },
+  {
     name: 'T015-T-UNIT exportSession includes the extracted job id in the download filename when available',
     fn(assert) {
       const app = adjApp();
@@ -16340,6 +16358,56 @@ const adjudicationTestSuites = [
       }
 
       assert.equal(capturedDownload.startsWith('fosizhi-adj-session-y109_02-'), true, 'export filename includes the extracted y109_02 job id');
+    }
+  },
+  {
+    name: 'T143-T-REG exportSession downloads current in-memory progress instead of stale browser cache',
+    fn(assert) {
+      const app = adjApp();
+      app.job = {
+        schemaVersion: '1',
+        sourceFile: 'y001/y001_01.xml',
+        sourceMarkers: 'y124_02_markers.json',
+        stripPunctuationChars: '，。',
+        candidatesBySegment: {},
+        models: ['claude'],
+        modelSummaries: []
+      };
+      app.segments = [{ id: '001', tier: 1, stripped_text: '甲乙', original_text: '甲乙', inline_elements: [] }];
+      app.adjudications = createUnreviewedAdjudications(app.segments);
+      const staleTimestamp = '2026-06-26T03:48:40.992Z';
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+        version: SCHEMA_VERSION,
+        timestamp: staleTimestamp,
+        jobMeta: serializeSessionJobMeta(app.job),
+        segments: app.segments.map(serializeSessionSegment),
+        adjudications: app.adjudications,
+        originalDiffs: {},
+        positionMaps: {},
+        fractionalInsertions: {},
+        currentSegmentIdx: 0,
+        view: 'segment',
+        filter: 'all'
+      }));
+
+      app.adjudications = {
+        '001': { status: 'accepted', goldenText: '甲，乙', sourceModel: 'claude', edited: false }
+      };
+
+      let capturedPayload = null;
+      app.triggerRawJsonDownload = (_filename, raw) => {
+        capturedPayload = JSON.parse(raw);
+      };
+
+      try {
+        app.exportSession();
+      } finally {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+      }
+
+      assert.equal(capturedPayload.adjudications['001'].status, 'accepted', 'exported draft uses live adjudication status');
+      assert.equal(capturedPayload.adjudications['001'].goldenText, '甲，乙', 'exported draft uses live adjudication text');
+      assert.equal(capturedPayload.timestamp === staleTimestamp, false, 'exported draft uses a fresh timestamp instead of stale browser cache metadata');
     }
   },  {
     name: 'T030-T-REG importSessionFromFile restores legacy sessions without draftVersion or jobFingerprint without error',
@@ -19231,6 +19299,13 @@ function getReleaseNotesHtml() {
       <h3>📦 版本 V1 (003-adjudication-editor) — 裁決編輯器</h3>
       <p><strong>發布日期：</strong>2026-06</p>
 
+      <h4>Hotfix（2026-07-01）— 大型進度檔匯入／匯出不再受 browser cache 停滯影響</h4>
+      <ul>
+        <li>「匯出進度檔」改由目前記憶體中的工作階段即時產生 JSON，不再下載最後一次成功寫入 <code>localStorage</code> 的舊快照</li>
+        <li>匯入進度檔時即使 <code>localStorage</code> 因容量限制拒絕寫入，仍會直接恢復檔案內容，避免大型進度檔無法載入</li>
+        <li>修復約 6 MB 工作階段中，瀏覽器自動儲存停止後，手動匯出的進度仍停留在數日前狀態的問題</li>
+      </ul>
+
       <h4>功能新增（2026-06-16）— 標記可視切換開關（Feature 006）</h4>
       <ul>
         <li>統計列新增五組獨立切換開關（一致、多數、新增各一排；衝突、段落內文字不一致各附不一致及已解決計數），關閉任何類別即時隱藏該類別標記的背景與邊框，保留純文字可讀性</li>
@@ -19373,6 +19448,7 @@ function getReleaseNotesHtml() {
         <li><strong>完整序列化</strong>：所有 <code>Map</code>/<code>Set</code>（包括候選位置、文字差異、分數插入）以可攜 JSON 格式儲存，恢復後完全重建</li>
         <li><strong>舊版匯入相容</strong>：缺少巢狀 Map 序列化的舊存檔可從 <code>segments[]</code> 重建基準比對狀態</li>
         <li><strong>設定欄手動控制</strong>：立即儲存、匯出進度檔、匯入進度檔、清除進度（四個全寬按鈕）</li>
+        <li><strong>大型進度檔保護</strong>：手動匯出直接序列化目前工作階段，手動匯入不因 <code>localStorage</code> 配額失敗而中止恢復</li>
         <li>成功匯出後自動清除工作階段，避免下次重複恢復</li>
         <li>localStorage 配額溢出時以 inline 錯誤提示，不中斷工作</li>
         <li><strong>草稿匯入（Feature 004）</strong>：載入畫面新增「步驟三：載入草稿（選填）」卡片，支援直接從檔案匯入裁決進度
@@ -19402,6 +19478,7 @@ function getReleaseNotesHtml() {
         <li><strong>插入標點位置</strong>（<code>pickerResolvedPlacement</code>）：插入的標點現在出現於同位置的比對標記之前，而非之後</li>
         <li><strong>匯出時的無條件提交</strong>：<code>finalizeAndExport</code> 不再對尚有未解衝突的段落執行 <code>commitSegmentEdit</code>，防止部分裁決結果被意外寫入</li>
         <li><strong>XPath 文脈查找</strong>：<code>resolveXmlContextForSegment</code> 改以 <code>segment.xpath</code>（而非 <code>inline_elements[0].xpath</code>）進行 XML 節點定位，修正 token 模式下私有倉庫的 XPath 查找失敗問題</li>
+        <li><strong>進度檔 stale cache</strong>：手動匯出不再使用過期的 browser cache 內容；匯入大型進度檔時即使快取寫入失敗，也會保留檔案中的段落、裁決、position maps 與 fractional insertions</li>
       </ul>
 
       <h4>⚡ 效能改善</h4>
@@ -19418,6 +19495,7 @@ function getReleaseNotesHtml() {
         <li>T047 端對端迴歸：50 段合成資料完整裁決匯出 563 ms；500 段非序列導航最大延遲 32 ms</li>
         <li>Feature 004 草稿匯入：T113（BDD 空畫面直接匯入）、T114（無指紋驗證恢復）等迴歸測試</li>
         <li>Feature 005 GitHub 模式：T066b（segment.xpath 查找）、T119（private repo Contents API fallback）、T120（FSZ URL fallback）、T121（面板連結結構）等</li>
+        <li>工作階段迴歸：T142 驗證 <code>localStorage</code> 配額拒絕時仍可匯入進度；T143 驗證手動匯出使用即時工作階段而非 stale cache</li>
         <li>內建測試執行器（hermetic runner）：每次執行前快照並還原 localStorage XML 來源設定，確保測試環境與瀏覽器持久化設定隔離</li>
         <li>Preview5 的 559 項既有測試（CJK 異體字、LCS、位置比對）零迴歸</li>
       </ul>
@@ -20172,29 +20250,33 @@ function adjApp() {
       return Array.isArray(this.job?.models) ? this.job.models.slice() : [];
     },
 
+    buildSessionPayload(timestamp = new Date().toISOString()) {
+      const fractionalForSave = {};
+      for (const [segId, fracMap] of Object.entries(this.fractionalInsertions)) {
+        fractionalForSave[segId] = fracMap instanceof Map ? Array.from(fracMap.entries()) : [];
+      }
+      return {
+        version: SCHEMA_VERSION,
+        timestamp,
+        jobMeta: serializeSessionJobMeta(this.job),
+        segments: this.segments.map(serializeSessionSegment),
+        adjudications: this.adjudications,
+        originalDiffs: serializePositionDiffCollection(this.originalDiffs),
+        positionMaps: serializePositionDiffCollection(this.positionMaps),
+        fractionalInsertions: fractionalForSave,
+        currentSegmentIdx: this.currentSegmentIdx,
+        view: this.view,
+        filter: this.filter
+      };
+    },
+
     qryHasSavedSession() {
       return !!this.hasSavedSession || localStorage.getItem(SESSION_STORAGE_KEY) !== null;
     },
 
     saveSession() {
       try {
-        const fractionalForSave = {};
-        for (const [segId, fracMap] of Object.entries(this.fractionalInsertions)) {
-          fractionalForSave[segId] = fracMap instanceof Map ? Array.from(fracMap.entries()) : [];
-        }
-        const payload = {
-          version: SCHEMA_VERSION,
-          timestamp: new Date().toISOString(),
-          jobMeta: serializeSessionJobMeta(this.job),
-          segments: this.segments.map(serializeSessionSegment),
-          adjudications: this.adjudications,
-          originalDiffs: serializePositionDiffCollection(this.originalDiffs),
-          positionMaps: serializePositionDiffCollection(this.positionMaps),
-          fractionalInsertions: fractionalForSave,
-          currentSegmentIdx: this.currentSegmentIdx,
-          view: this.view,
-          filter: this.filter
-        };
+        const payload = this.buildSessionPayload();
         this.persistSessionPayload(payload);
       } catch (err) {
         if (err.name === 'QuotaExceededError' || err.code === 22) {
@@ -20212,12 +20294,16 @@ function adjApp() {
 
     restoreSession(data = null) {
       const incoming = data ? this.normalizeImportedSessionPayload(data) : null;
-      const raw = incoming ? JSON.stringify(incoming) : localStorage.getItem(SESSION_STORAGE_KEY);
-      if (!raw) return;
+      const raw = incoming ? null : localStorage.getItem(SESSION_STORAGE_KEY);
+      if (!incoming && !raw) return;
       try {
-        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        if (incoming && !this.persistSessionPayload(incoming)) {
-          return;
+        const parsed = incoming || JSON.parse(raw);
+        if (incoming) {
+          try {
+            this.persistSessionPayload(incoming);
+          } catch (storageErr) {
+            console.warn('Imported session restored without updating localStorage:', storageErr);
+          }
         }
         const restoredSegments = (parsed.segments || []).map(reviveSessionSegment);
         const restoredJob = reviveSessionJob(parsed.jobMeta, restoredSegments);
@@ -20324,7 +20410,8 @@ function adjApp() {
     // ── End Session Persistence ───────────────────────────────────────────────
 
     exportSession() {
-      const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+      const payload = this.job ? this.buildSessionPayload() : null;
+      const raw = payload ? JSON.stringify(payload) : localStorage.getItem(SESSION_STORAGE_KEY);
       if (!raw) return;
       const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       let sourceMarkers = this.job?.sourceMarkers || '';
@@ -20336,13 +20423,18 @@ function adjApp() {
         }
       }
       const jobId = extractJobId(sourceMarkers);
+      const filename = jobId
+        ? `fosizhi-adj-session-${jobId}-${ts}.json`
+        : `fosizhi-adj-session-${ts}.json`;
+      this.triggerRawJsonDownload(filename, raw);
+    },
+
+    triggerRawJsonDownload(filename, raw) {
       const blob = new Blob([raw], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = jobId
-        ? `fosizhi-adj-session-${jobId}-${ts}.json`
-        : `fosizhi-adj-session-${ts}.json`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
