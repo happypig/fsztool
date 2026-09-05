@@ -2168,7 +2168,7 @@
               </div>
               <div class="adj-file-input-stage">
                 <div class="adj-file-control">
-                  <label class="adj-file-button" for="adj-markers-file" role="button" tabindex="0" @keydown.enter.prevent="$refs.markersFileInput.click()" @keydown.space.prevent="$refs.markersFileInput.click()">Choose file</label>
+                  <label class="adj-file-button" for="adj-markers-file" role="button" tabindex="0" @click.prevent="openJobFilePicker('markers')" @keydown.enter.prevent="openJobFilePicker('markers')" @keydown.space.prevent="openJobFilePicker('markers')">Choose file</label>
                   <span class="adj-file-name" x-text="markersFile ? markersFile.name : 'No file chosen'"></span>
                   <input x-ref="markersFileInput" class="adj-native-file-input" id="adj-markers-file" type="file" accept=".json,application/json" aria-describedby="adj-markers-help" @change="handleMarkersSelection($event.target.files[0])">
                 </div>
@@ -2189,7 +2189,7 @@
               </div>
               <div class="adj-file-input-stage">
                 <div class="adj-file-control">
-                  <label class="adj-file-button" for="adj-model-files" role="button" tabindex="0" @keydown.enter.prevent="$refs.modelFilesInput.click()" @keydown.space.prevent="$refs.modelFilesInput.click()">Choose files</label>
+                  <label class="adj-file-button" for="adj-model-files" role="button" tabindex="0" @click.prevent="openJobFilePicker('repunctuated')" @keydown.enter.prevent="openJobFilePicker('repunctuated')" @keydown.space.prevent="openJobFilePicker('repunctuated')">Choose files</label>
                   <span class="adj-file-name" x-text="modelFiles.length ? `${modelFiles.length} file${modelFiles.length === 1 ? '' : 's'}` : 'No file chosen'"></span>
                   <input x-ref="modelFilesInput" class="adj-native-file-input" id="adj-model-files" type="file" accept=".json,application/json" multiple aria-describedby="adj-models-help" @change="handleModelSelections($event.target.files)">
                 </div>
@@ -8135,6 +8135,86 @@ function extractJobId(sourceMarkers) {
   return match ? match[1] : null;
 }
 
+function getFilenameBasename(value) {
+  const normalized = String(value || '').replace(/[\\/]+$/, '');
+  return normalized.split(/[\\/]/).pop() || '';
+}
+
+function deriveJobIdentityFromMarkersFilename(filename) {
+  const basename = getFilenameBasename(filename);
+  const match = /^(.+)_markers\.json$/i.exec(basename);
+  return match ? match[1] : null;
+}
+
+function deriveCandidateJobIdentity(filename) {
+  const basename = getFilenameBasename(filename);
+  const match = /^(.+)_repunctuated_(.+)\.json$/i.exec(basename);
+  return match ? match[1] : null;
+}
+
+function deriveJobFilenameFromCandidate(filename) {
+  const jobId = deriveCandidateJobIdentity(filename);
+  return jobId ? `${jobId}_markers.json` : null;
+}
+
+function getPairingVerdict(markersFilename, candidateFilename, internalReference) {
+  const markersBasename = getFilenameBasename(markersFilename);
+  const candidateBasename = getFilenameBasename(candidateFilename);
+  const expectedJobId = deriveJobIdentityFromMarkersFilename(markersBasename);
+  const candidateJobId = deriveCandidateJobIdentity(candidateBasename);
+  const actualJobFilename = deriveJobFilenameFromCandidate(candidateBasename);
+  const internalReferenceFilename = internalReference ? getFilenameBasename(internalReference) : null;
+
+  if (!/_repunctuated(?:_.+)?\.json$/i.test(candidateBasename)) {
+    return {
+      status: 'mismatched',
+      reason: 'not-repunctuated-file',
+      actualJobFilename: actualJobFilename || internalReferenceFilename,
+      internalReferenceFilename,
+      markersFilename: markersBasename
+    };
+  }
+
+  if (expectedJobId && candidateJobId && candidateJobId !== expectedJobId) {
+    return {
+      status: 'mismatched',
+      reason: 'filename-job-mismatch',
+      actualJobFilename,
+      internalReferenceFilename,
+      markersFilename: markersBasename
+    };
+  }
+
+  if (internalReferenceFilename && internalReferenceFilename.toLowerCase() !== markersBasename.toLowerCase()) {
+    return {
+      status: 'mismatched',
+      reason: 'internal-reference-mismatch',
+      actualJobFilename: actualJobFilename || internalReferenceFilename,
+      internalReferenceFilename,
+      markersFilename: markersBasename
+    };
+  }
+
+  if (!expectedJobId && internalReferenceFilename) {
+    const matches = internalReferenceFilename.toLowerCase() === markersBasename.toLowerCase();
+    return {
+      status: matches ? 'paired' : 'mismatched',
+      reason: matches ? 'internal-reference-match' : 'internal-reference-mismatch',
+      actualJobFilename: actualJobFilename || internalReferenceFilename,
+      internalReferenceFilename,
+      markersFilename: markersBasename
+    };
+  }
+
+  return {
+    status: expectedJobId && candidateJobId === expectedJobId ? 'paired' : 'unknown',
+    reason: expectedJobId && candidateJobId === expectedJobId ? 'filename-match' : 'no-provable-job-identity',
+    actualJobFilename,
+    internalReferenceFilename,
+    markersFilename: markersBasename
+  };
+}
+
 
 const SUPPORTED_SCHEMA_VERSIONS = ['1', '2'];
 
@@ -8894,6 +8974,70 @@ const SOURCE_XML_DIR_DB_NAME = 'fosizhi-xml-directory';
 const SOURCE_XML_DIR_STORE_NAME = 'settings';
 const SOURCE_XML_DIR_HANDLE_KEY = 'source_xml_dir_handle';
 
+const JOB_FILE_PICKER_DB_NAME = 'fosizhi-job-file-pickers-v1';
+const JOB_FILE_PICKER_STORE_NAME = 'settings';
+const JOB_FILE_PICKER_KEYS = Object.freeze({
+  markers: 'markers',
+  repunctuated: 'repunctuated'
+});
+const JOB_FILE_PICKER_IDS = Object.freeze({
+  markers: 'fosizhi-v1-job-markers',
+  repunctuated: 'fosizhi-v1-job-repunctuated'
+});
+
+async function openJobFilePickerDb(indexedDbImpl = window.indexedDB) {
+  if (!indexedDbImpl || typeof indexedDbImpl.open !== 'function') {
+    return null;
+  }
+  return new Promise((resolve, reject) => {
+    let request = null;
+    try {
+      request = indexedDbImpl.open(JOB_FILE_PICKER_DB_NAME, 1);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(JOB_FILE_PICKER_STORE_NAME)) {
+        db.createObjectStore(JOB_FILE_PICKER_STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Unable to open job file picker persistence database.'));
+  });
+}
+
+async function persistJobFilePickerHandle(selector, handle, indexedDbImpl = window.indexedDB) {
+  const key = JOB_FILE_PICKER_KEYS[selector];
+  if (!key || !handle) return false;
+  const db = await openJobFilePickerDb(indexedDbImpl);
+  if (!db) return false;
+  try {
+    const transaction = db.transaction(JOB_FILE_PICKER_STORE_NAME, 'readwrite');
+    transaction.objectStore(JOB_FILE_PICKER_STORE_NAME).put({ handle, name: handle.name || '', updatedAt: Date.now() }, key);
+    await idbTransactionToPromise(transaction);
+    return true;
+  } finally {
+    db.close();
+  }
+}
+
+async function loadJobFilePickerHandle(selector, indexedDbImpl = window.indexedDB) {
+  const key = JOB_FILE_PICKER_KEYS[selector];
+  if (!key) return null;
+  const db = await openJobFilePickerDb(indexedDbImpl);
+  if (!db) return null;
+  try {
+    const transaction = db.transaction(JOB_FILE_PICKER_STORE_NAME, 'readonly');
+    const record = await idbRequestToPromise(transaction.objectStore(JOB_FILE_PICKER_STORE_NAME).get(key));
+    await idbTransactionToPromise(transaction);
+    return record?.handle || null;
+  } finally {
+    db.close();
+  }
+}
+
 function idbRequestToPromise(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -9278,6 +9422,91 @@ async function createSavedDraftPayload(options = {}) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 const adjudicationTestSuites = [
+  {
+    name: 'T007-T-UNIT job pairing verdicts use filename and source_sidecar rules',
+    fn(assert) {
+      assert.equal(deriveJobIdentityFromMarkersFilename('y001_00_markers.json'), 'y001_00', 'derives conventional job identity');
+      assert.equal(deriveJobIdentityFromMarkersFilename('D:/jobs/y001_00_markers.json'), 'y001_00', 'ignores marker path');
+      assert.equal(deriveJobIdentityFromMarkersFilename('renamed.json'), null, 'returns null for non-conventional markers names');
+      const paired = getPairingVerdict('y001_00_markers.json', 'y001_00_repunctuated_gpt.json', '/other/tree/y001_00_markers.json');
+      assert.equal(paired.status, 'paired', 'matches filename and path-bearing source_sidecar by basename');
+      assert.equal(paired.reason, 'filename-match', 'reports filename match reason');
+      assert.equal(paired.actualJobFilename, 'y001_00_markers.json', 'reports paired job filename');
+      assert.equal(getPairingVerdict('y001_00_markers.json', 'y002_00_repunctuated_gpt.json', '/other/tree/y002_00_markers.json').status, 'mismatched', 'rejects wrong candidate job');
+      assert.equal(getPairingVerdict('y001_00_markers.json', 'y001_00_markers.json', null).status, 'mismatched', 'rejects markers file selected as candidate');
+      assert.equal(getPairingVerdict('renamed.json', 'legacy_repunctuated.json', null).status, 'unknown', 'accepts unprovable pairing as unknown');
+      assert.equal(getPairingVerdict('y001_00_markers.json', 'y001_00_repunctuated_gpt.json', '/other/tree/y002_00_markers.json').reason, 'internal-reference-mismatch', 'reports source_sidecar disagreement');
+    }
+  },
+  {
+    name: 'T007-T-INTEGRATION pairing failures remain visible and block load',
+    async fn(assert) {
+      const markersFile = createAdjudicationJsonTestFile('y001_00_markers.json', {
+        schema_version: '1',
+        segments: { '001': { id: '001', stripped_text: '甲乙', original_text: '甲乙' } }
+      });
+      const pairedFile = createAdjudicationJsonTestFile('y001_00_repunctuated_a.json', {
+        schema_version: '1',
+        source_sidecar: '/candidate/input/y001_00_markers.json',
+        model: 'a',
+        segments: { '001': { id: '001', repunctuated_text: '甲，乙' } }
+      });
+      const wrongFile = createAdjudicationJsonTestFile('y002_00_repunctuated_b.json', {
+        schema_version: '1',
+        source_sidecar: '/candidate/input/y002_00_markers.json',
+        model: 'b',
+        segments: { '001': { id: '001', repunctuated_text: '甲。乙' } }
+      });
+      const app = adjApp();
+      app.scheduleLoadCardAlignment = () => {};
+      await app.handleMarkersSelection(markersFile);
+      await app.handleModelSelections([pairedFile, wrongFile]);
+      assert.equal(app.loadPreview.modelResults.length, 2, 'retains paired and mismatched files in preview');
+      assert.equal(app.loadContextCache.hasPairingFailure, true, 'records blocking pairing failure');
+      assert.equal(app.canBeginAdjudication, false, 'blocks CTA for partial mismatch');
+      assert.equal(app.loadPreview.modelResults.some(result => result.pairing?.status === 'paired'), true, 'paired result remains visible');
+    }
+  },
+  {
+    name: 'T020-T-UNIT job file picker capability and cancellation behavior',
+    async fn(assert) {
+      const app = adjApp();
+      let clicked = 0;
+      app.$refs = {
+        markersFileInput: { click: () => { clicked += 1; } },
+        modelFilesInput: { click: () => { clicked += 1; } }
+      };
+      app.jobFilePickerSupported = false;
+      await app.openJobFilePicker('markers');
+      assert.equal(clicked, 1, 'unsupported browsers use the native markers input');
+
+      const originalPicker = window.showOpenFilePicker;
+      const originalSecureContext = window.isSecureContext;
+      const originalPreview = app.previewSelections;
+      let optionsSeen = null;
+      let previewCalls = 0;
+      app.previewSelections = async () => { previewCalls += 1; };
+      window.isSecureContext = true;
+      window.showOpenFilePicker = async options => {
+        optionsSeen = options;
+        return [{ name: 'folder-a', getFile: async () => ({ name: 'y001_00_markers.json' }) }];
+      };
+      app.jobFilePickerSupported = true;
+      await app.openJobFilePicker('markers');
+      assert.equal(optionsSeen.id, JOB_FILE_PICKER_IDS.markers, 'markers picker uses its stable scoped ID');
+      assert.equal(optionsSeen.multiple, false, 'markers picker is single-file');
+      assert.equal(app.markersFile.name, 'y001_00_markers.json', 'successful picker selection commits the file');
+      assert.equal(previewCalls, 1, 'successful picker selection re-previews');
+
+      const previousFile = app.markersFile;
+      window.showOpenFilePicker = async () => { const error = new Error('cancelled'); error.name = 'AbortError'; throw error; };
+      await app.openJobFilePicker('markers');
+      assert.equal(app.markersFile, previousFile, 'picker cancellation preserves the current selection');
+      window.showOpenFilePicker = originalPicker;
+      window.isSecureContext = originalSecureContext;
+      app.previewSelections = originalPreview;
+    }
+  },
   {
     name: 'T006-T-UNIT extractJobId handles supported and unsupported markers filenames',
     fn(assert) {
@@ -10914,7 +11143,7 @@ const adjudicationTestSuites = [
 
       app.modelFiles = [{ name: 'model_a_repunctuated.json' }];
       app.loadPreview = null;
-      assert.equal(app.canBeginAdjudication, true, 'load CTA enables once both file-selection steps are complete');
+      assert.equal(app.canBeginAdjudication, false, 'load CTA stays disabled until preview validation completes');
     }
   },
   {
@@ -15306,19 +15535,16 @@ const adjudicationTestSuites = [
 
       await app.LoadJob(markersFile, [partialModel, mismatchedModel]);
 
-      assert.equal(app.view, 'overview', 'job still loads into overview with one usable sparse model');
+      assert.equal(app.view, 'load', 'job remains on load screen when any model file mismatches');
       assert.equal(app.loadPreview.matchedModelCount, 1, 'only the matching sparse model counts toward matched previews');
-      assert.equal(app.job.models.length, 1, 'mismatched model file is excluded from the adjudication job');
+      assert.equal(app.job, null, 'mismatched model file prevents creating the adjudication job');
       assert.includes(
         app.loadPreview.modelResults.find(result => result.filename === 'bad_repunctuated.json').warning,
-        'mismatch; skipped',
-        'mismatched model file surfaces a skip warning'
+        '配對失敗',
+        'mismatched model file surfaces a blocking pairing error'
       );
-      assert.equal(app.getCandidates('001').length, 1, 'matched segment keeps its real candidate');
-      assert.equal(app.getCandidates('002').length, 0, 'unmatched segment does not get a ghost candidate');
-      assert.equal(app.getAdjudicationState('001').status, 'accepted', 'single matched candidate auto-accepts on load');
-      assert.equal(app.pendingSegments().length, 1, 'only the unmatched segment remains pending');
-      assert.equal(app.pendingSegments()[0].id, '002', 'pending list stays scoped to the unmatched segment');
+      assert.equal(app.loadContextCache.candidatesBySegment['001'].length, 1, 'paired segment remains in the preview context');
+      assert.equal(app.loadContextCache.candidatesBySegment['002'].length, 0, 'unmatched segment does not get a ghost candidate');
     }
   },
   {
@@ -19409,6 +19635,15 @@ function getReleaseNotesHtml() {
       <h3>📦 版本 V1 (003-adjudication-editor) — 裁決編輯器</h3>
       <p><strong>發布日期：</strong>2026-06</p>
 
+      <h4>功能新增（2026-09-03）— 工作檔配對防護與選擇器資料夾記憶（Feature 007）</h4>
+      <ul>
+        <li>載入工作檔時依 markers 與 repunctuated 檔名的工作識別逐一驗證配對，並以 <code>source_sidecar</code> 的檔名部分作為內部參照確認</li>
+        <li>配對失敗改為載入畫面的阻擋錯誤，明確列出問題檔案及其所屬工作；部分配對失敗時不再靜默略過檔案</li>
+        <li>所有候選檔案皆配對成功且至少有一個候選段落吻合後，才啟用「開始裁決」；零候選工作無法進入裁決畫面</li>
+        <li>markers 與 repunctuated 選擇器各自記憶最近使用的資料夾，跨頁面重載與瀏覽器重啟保留，且不與其他工具共用</li>
+        <li>不支援資料夾記憶的瀏覽器仍可使用原有檔案選取控制，配對防護不受影響；取消選取不會清除既有預覽或錯誤狀態</li>
+      </ul>
+
       <h4>Hotfix（2026-07-01）— 大型進度檔匯入／匯出不再受 browser cache 停滯影響</h4>
       <ul>
         <li>「匯出進度檔」改由目前記憶體中的工作階段即時產生 JSON，不再下載最後一次成功寫入 <code>localStorage</code> 的舊快照</li>
@@ -19752,6 +19987,8 @@ function adjApp() {
     sourceXmlDirName: '',
     sourceXmlDirPermission: 'missing',
     sourceXmlDirRestorePending: false,
+    jobFilePickerSupported: false,
+    jobFilePickerHandles: { markers: null, repunctuated: null },
     _beforeUnloadHandler: null,
     _resizeHandler: null,
     _scrollHandler: null,
@@ -19795,6 +20032,8 @@ function adjApp() {
       this.showAlignmentDropReport = normalizeAlignmentDropReportVisibility(localStorage.getItem(ALIGNMENT_DROP_REPORT_STORAGE_KEY));
       this.sourceXmlDirName = localStorage.getItem('source_xml_dir_name') || '';
       this.sourceXmlDirPermission = this.sourceXmlDirName ? 'prompt' : 'missing';
+      this.jobFilePickerSupported = typeof window.showOpenFilePicker === 'function' && window.isSecureContext !== false;
+      this.restoreJobFilePickerHandles();
       this.loadGithubSettings();
       this._sourceXmlDirRestorePromise = this.restorePersistedXmlDirectory();
       this.loadSavedSessionMeta();
@@ -20668,10 +20907,17 @@ function adjApp() {
     },
 
     get canBeginAdjudication() {
+      const context = this.loadContextCache;
+      const results = Array.isArray(context?.modelResults) ? context.modelResults : [];
+      const hasMatchedSegments = results.some(result => result.matchedCount > 0 && result.pairing?.status !== 'mismatched');
+      const hasPairingFailure = results.some(result => result.pairing?.status === 'mismatched');
       return !!(
         this.markersFile &&
         Array.isArray(this.modelFiles) &&
-        this.modelFiles.length > 0
+        this.modelFiles.length > 0 &&
+        context &&
+        !hasPairingFailure &&
+        hasMatchedSegments
       );
     },
 
@@ -20761,6 +21007,61 @@ function adjApp() {
       await this.previewSelections();
     },
 
+    async restoreJobFilePickerHandles() {
+      if (!this.jobFilePickerSupported) return;
+      for (const selector of Object.keys(JOB_FILE_PICKER_KEYS)) {
+        try {
+          const handle = await loadJobFilePickerHandle(selector);
+          if (handle) this.jobFilePickerHandles[selector] = handle;
+        } catch (_) {
+          this.jobFilePickerHandles[selector] = null;
+        }
+      }
+    },
+
+    async openJobFilePicker(selector) {
+      const input = selector === 'markers' ? this.$refs?.markersFileInput : this.$refs?.modelFilesInput;
+      if (!this.jobFilePickerSupported) {
+        input?.click();
+        return;
+      }
+
+      const options = {
+        id: JOB_FILE_PICKER_IDS[selector],
+        multiple: selector === 'repunctuated',
+        types: [{ description: 'JSON files', accept: { 'application/json': ['.json'] } }]
+      };
+      const startIn = this.jobFilePickerHandles[selector];
+      if (startIn) {
+        try {
+          const permission = await getXmlDirectoryPermissionState(startIn, false);
+          if (permission !== 'denied') options.startIn = startIn;
+        } catch (_) {
+          // The browser can still use its per-ID remembered directory.
+        }
+      }
+
+      try {
+        const handles = await window.showOpenFilePicker(options);
+        if (!handles || handles.length === 0) return;
+        const files = await Promise.all(handles.map(handle => handle.getFile()));
+        this.jobFilePickerHandles[selector] = handles[0];
+        try {
+          await persistJobFilePickerHandle(selector, handles[0]);
+        } catch (_) {
+          // Picker ID memory remains useful even when IndexedDB persistence fails.
+        }
+        if (selector === 'markers') {
+          await this.handleMarkersSelection(files[0]);
+        } else {
+          await this.handleModelSelections(files);
+        }
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+        input?.click();
+      }
+    },
+
     async previewSelections() {
       this.error = '';
       if (!this.markersFile) {
@@ -20776,8 +21077,13 @@ function adjApp() {
         this.loadPreview = {
           segmentCount: this.loadContextCache.segments.length,
           matchedModelCount: this.loadContextCache.modelResults.filter(result => !result.warning && result.matchedCount > 0).length,
-          modelResults: this.loadContextCache.modelResults
+          modelResults: this.loadContextCache.modelResults,
+          hasPairingFailure: this.loadContextCache.hasPairingFailure,
+          hasMatchedSegments: this.loadContextCache.hasMatchedSegments
         };
+        if (this.modelFiles.length > 0 && !this.loadContextCache.hasMatchedSegments && !this.loadContextCache.hasPairingFailure) {
+          this.error = '沒有候選段落與 markers 檔案相符，無法開始裁決。';
+        }
       } catch (error) {
         this.error = error.message;
         this.loadPreview = null;
@@ -20824,6 +21130,7 @@ function adjApp() {
       const candidatesBySegment = Object.fromEntries(segments.map(segment => [segment.id, []]));
       const modelResults = [];
       let schemaSkipCount = 0;
+      let hasPairingFailure = false;
 
       for (const file of modelFiles || []) {
         const json = await readJsonFile(file);
@@ -20835,11 +21142,21 @@ function adjApp() {
           totalCount: modelSegments.length,
           warning: '',
           statusText: '',
+          pairing: null,
           segmentsMap: new Map()
         };
 
-        if (json.source_markers && json.source_markers !== markersFile.name) {
-          result.warning = `⚠ ${file.name} mismatch; skipped`;
+        result.pairing = getPairingVerdict(
+          markersFile.name,
+          file.name,
+          json.source_sidecar ?? json.source_markers ?? null
+        );
+        if (result.pairing.status === 'mismatched') {
+          hasPairingFailure = true;
+          const actual = result.pairing.actualJobFilename
+            ? `；此檔案屬於 ${result.pairing.actualJobFilename}`
+            : `；無法將此檔案與 ${markersFile.name} 配對`;
+          result.warning = `⚠ ${file.name} 配對失敗${actual}`;
           result.statusText = `0 / ${result.totalCount}`;
           modelResults.push(result);
           continue;
@@ -20903,6 +21220,8 @@ function adjApp() {
         segments,
         candidatesBySegment,
         modelResults,
+        hasPairingFailure,
+        hasMatchedSegments: modelResults.some(result => result.matchedCount > 0 && result.pairing?.status !== 'mismatched'),
         originalDiffs
       };
     },
@@ -20924,9 +21243,14 @@ function adjApp() {
         this.loadPreview = {
           segmentCount: context.segments.length,
           matchedModelCount: context.modelResults.filter(result => !result.warning && result.matchedCount > 0).length,
-          modelResults: context.modelResults
+          modelResults: context.modelResults,
+          hasPairingFailure: context.hasPairingFailure,
+          hasMatchedSegments: context.hasMatchedSegments
         };
 
+        if (context.hasPairingFailure) {
+          throw new Error('配對失敗：請確認所有 repunctuated 檔案屬於同一個 markers 工作。');
+        }
         if (this.loadPreview.matchedModelCount === 0) {
           throw new Error('No matched model files were loaded');
         }
