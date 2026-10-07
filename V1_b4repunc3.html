@@ -1023,10 +1023,6 @@
       color: #ef4444;
     }
 
-    .adj-overview-metric-parity {
-      color: #b5651d;
-    }
-
     .adj-progress-label {
       display: block;
       margin-top: 0.75rem;
@@ -1800,52 +1796,6 @@
       white-space: pre-wrap;
     }
 
-    .adj-content-parity-card {
-      margin-top: 1rem;
-      padding: 1rem 1.25rem;
-    }
-
-    .adj-content-parity-header {
-      margin-bottom: 0.85rem;
-    }
-
-    .adj-content-parity-header h3 {
-      margin-bottom: 0.35rem;
-      font-size: 1rem;
-    }
-
-    .adj-content-parity-list {
-      display: grid;
-      gap: 0.75rem;
-    }
-
-    .adj-content-parity-item {
-      padding: 0.7rem 0.8rem;
-      border: 1px solid rgba(181, 101, 29, 0.24);
-      border-radius: 0.6rem;
-      background: linear-gradient(180deg, rgba(255, 248, 233, 0.92), rgba(255, 242, 214, 0.92));
-    }
-
-    .adj-content-parity-item-severe {
-      border: 1px solid var(--marker-conflict-border);
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), var(--marker-conflict));
-    }
-
-    .adj-content-parity-meta {
-      display: flex;
-      align-items: baseline;
-      gap: 0.5rem;
-    }
-
-    .adj-content-parity-meta span {
-      color: var(--pico-muted-color);
-      font-size: 0.88rem;
-    }
-
-    .adj-content-parity-item-severe .adj-content-parity-meta span {
-      color: var(--stat-conflict);
-    }
-
     .adj-context-panel {
       border: 1px solid var(--pico-muted-border-color);
       border-radius: 12px;
@@ -2291,7 +2241,6 @@
           </small>
         </p>
         <p x-show="progressStats.resolved > 0" class="adj-overview-metric adj-overview-metric-resolved">✓ 已處理段落: <strong x-text="progressStats.resolved"></strong></p>
-        <p x-show="progressStats.contentParityFlagged > 0" class="adj-overview-metric adj-overview-metric-parity">⚠ 內容標記段落: <strong x-text="progressStats.contentParityFlagged"></strong></p>
         <progress class="adj-progress" :value="progressStats.done" :max="progressStats.total || 1"></progress>
         <small class="adj-progress-label">段落進度: <span x-text="progressStats.done"></span> / <span x-text="progressStats.total"></span></small>
       </article>
@@ -2342,17 +2291,12 @@
                     <button class="punc-toggle inserted" :class="hiddenMarkerTypes.inserted ? 'off' : 'on'" @click="toggleMarkerType('inserted')" role="switch" :aria-checked="!hiddenMarkerTypes.inserted"></button>
                   </span>
                 </template>
-                <template x-if="currentContentParityReport().length > 0">
-                  <span class="adj-punc-group">
-                    <span class="stat-badge" :class="currentContentParityReport().some(item => item.severity === 'severe') ? 'stat-badge-conflict' : 'stat-badge-inserted'">內容標記 <span x-text="currentContentParityReport().length"></span></span>
-                  </span>
-                </template>
-                <template x-if="currentSegmentTextDiffStats().visible">
+                <template x-if="currentSegmentTextdiffStats().visible">
                   <span class="adj-textdiff-stat-row">
                     <span class="adj-textdiff-label">段落內文字不一致:</span>
                     <span class="adj-punc-group">
-                      <span class="stat-badge stat-badge-textmismatch" :class="{ 'stat-badge-faded': hiddenMarkerTypes.textdiff }">不一致 <span x-text="currentSegmentTextDiffStats().unresolved"></span></span>
-                      <span class="stat-badge stat-badge-textmismatch-resolved" :class="{ 'stat-badge-faded': hiddenMarkerTypes.textdiff }">✓ <span x-text="currentSegmentTextDiffStats().resolved"></span></span>
+                      <span class="stat-badge stat-badge-textmismatch" :class="{ 'stat-badge-faded': hiddenMarkerTypes.textdiff }">不一致 <span x-text="currentSegmentTextdiffStats().unresolved"></span></span>
+                      <span class="stat-badge stat-badge-textmismatch-resolved" :class="{ 'stat-badge-faded': hiddenMarkerTypes.textdiff }">✓ <span x-text="currentSegmentTextdiffStats().resolved"></span></span>
                       <button class="punc-toggle textdiff" :class="hiddenMarkerTypes.textdiff ? 'off' : 'on'" @click="toggleMarkerType('textdiff')" role="switch" :aria-checked="!hiddenMarkerTypes.textdiff"></button>
                     </span>
                   </span>
@@ -2419,23 +2363,6 @@
                 </template>
               </div>
             </article>
-
-            <article class="adj-card adj-content-parity-card adj-main-column" x-show="showContentParityReport && currentContentParityReport().length > 0" x-cloak>
-              <div class="adj-content-parity-header">
-                <h3>內容完整性提示</h3>
-                <p class="adj-help">列出本段落中，內容完整性驗證未通過的候選版本。</p>
-              </div>
-              <div class="adj-content-parity-list">
-                <template x-for="item in currentContentParityReport()" :key="item.model">
-                  <div class="adj-content-parity-item" :class="item.severity === 'severe' ? 'adj-content-parity-item-severe' : ''">
-                    <div class="adj-content-parity-meta">
-                      <strong x-text="item.model"></strong>
-                      <span x-text="item.contentParity === 'content_violation' ? (item.whitespaceOnly ? '內容比對未通過（僅空白差異）' : '內容比對未通過') : (item.contentParity === 'variant_accepted' ? '異體字替換' : '內容標記')"></span>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </article>
           </div>
         </template>
 
@@ -2452,7 +2379,7 @@
               <div class="adj-popup-context adj-popup-context-textdiff">
                 <div class="adj-popup-meta">文字差異:</div>
                 <div class="paragraph-text adj-popup-kwic">
-                  <span class="adj-popup-kwic-fragment adj-popup-kwic-before adj-popup-muted" x-text="popupTextDiffContextDisplay().before"></span><span class="adj-popup-kwic-focus marker marker-textmismatch" :class="popupTextDiffContext().markerClass || `textdiff-${popupTextDiffEntry()?.category || 'conflict'}`" style="margin: 0 2px;" x-text="popupTextDiffContextDisplay().focus"></span><span class="adj-popup-kwic-fragment adj-popup-kwic-after adj-popup-muted" x-text="popupTextDiffContextDisplay().after"></span>
+                  <span class="adj-popup-kwic-fragment adj-popup-kwic-before adj-popup-muted" x-text="popupTextDiffContext().before"></span><span class="adj-popup-kwic-focus marker marker-textmismatch" :class="popupTextDiffContext().markerClass || `textdiff-${popupTextDiffEntry()?.category || 'conflict'}`" style="margin: 0 2px;" x-text="popupTextDiffContext().focus"></span><span class="adj-popup-kwic-fragment adj-popup-kwic-after adj-popup-muted" x-text="popupTextDiffContext().after"></span>
                 </div>
               </div>
               <div class="adj-popup-hint">文字版本參考</div>
@@ -2475,7 +2402,7 @@
               <div class="adj-popup-context adj-popup-context-position">
                 <div class="adj-popup-meta">前後文脈絡:</div>
                 <div class="paragraph-text adj-popup-kwic">
-                  <span class="adj-popup-kwic-fragment adj-popup-kwic-before" x-text="popupContextDisplay().before"></span><span class="adj-popup-kwic-focus marker" :class="['marker-' + popupEntry().category, popupEntry().resolved && !popupEntry().autoResolved ? 'marker-resolved' : '', popupEntry().differsFromOriginal ? 'marker-original-diff' : ''].filter(Boolean).join(' ')" style="margin: 0 2px;" x-text="popupContextDisplay().focus"></span><span class="adj-popup-kwic-fragment adj-popup-kwic-after" x-text="popupContextDisplay().after"></span>
+                  <span class="adj-popup-kwic-fragment adj-popup-kwic-before" x-text="popupContext().before"></span><span class="adj-popup-kwic-focus marker" :class="['marker-' + popupEntry().category, popupEntry().resolved && !popupEntry().autoResolved ? 'marker-resolved' : '', popupEntry().differsFromOriginal ? 'marker-original-diff' : ''].filter(Boolean).join(' ')" style="margin: 0 2px;" x-text="popupContext().focus"></span><span class="adj-popup-kwic-fragment adj-popup-kwic-after" x-text="popupContext().after"></span>
                 </div>
               </div>
               <div class="adj-popup-hint">選擇標點 <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></div>
@@ -2836,13 +2763,6 @@
           <button type="button" :class="{ selected: !showAlignmentDropReport }" :aria-pressed="!showAlignmentDropReport" @click="setAlignmentDropReportVisibility(false)">隱藏</button>
         </div>
       </div>
-      <div class="adj-settings-section">
-        <h4>內容完整性提示</h4>
-        <div class="adj-segmented-control" role="group" aria-label="內容完整性提示顯示">
-          <button type="button" :class="{ selected: showContentParityReport }" :aria-pressed="showContentParityReport" @click="setContentParityReportVisibility(true)">顯示</button>
-          <button type="button" :class="{ selected: !showContentParityReport }" :aria-pressed="!showContentParityReport" @click="setContentParityReportVisibility(false)">隱藏</button>
-        </div>
-      </div>
       <hr style="margin: 1.5rem 0;">
       <button type="button" class="secondary outline adj-settings-action" @click="runTests()">執行內建測試</button>
       <div class="adj-test-results" x-show="testResults !== null">
@@ -3012,7 +2932,6 @@ function getPunctuationName(punct) {
 const STRUCTURAL_SEPARATOR_CHARS = '{}⟦⟧';
 const KWIC_DISPLAY_MODE_STORAGE_KEY = 'kwic_display_mode';
 const ALIGNMENT_DROP_REPORT_STORAGE_KEY = 'alignment_drop_report';
-const CONTENT_PARITY_REPORT_STORAGE_KEY = 'content_parity_report';
 const THEME_MODE_STORAGE_KEY = 'theme_mode';
 const XML_SOURCE_MODE_STORAGE_KEY = 'xml_source_mode';
 const GITHUB_URL_STORAGE_KEY = 'github_url';
@@ -3049,10 +2968,6 @@ function normalizeKwicDisplayMode(mode) {
 }
 
 function normalizeAlignmentDropReportVisibility(value) {
-  return value !== 'off';
-}
-
-function normalizeContentParityReportVisibility(value) {
   return value !== 'off';
 }
 
@@ -7934,19 +7849,6 @@ function getTextDiffValueEntries(entry) {
   return Object.entries(entry.values || {});
 }
 
-// Whitespace-only text-diff values (a dropped/kept space) are invisible in a marker box;
-// show a glyph instead. Display only: stored values stay real whitespace.
-function visibleWhitespace(value) {
-  return typeof value === 'string' && value !== '' && /^\s+$/.test(value)
-    ? value.replace(/\s/g, ch => (ch === '\u3000' ? '␣␣' : '␣'))
-    : value;
-}
-
-// Preview strings (KWIC before/focus/after): U+0020 shown as one glyph, U+3000 as two. Display only.
-function visibleWhitespaceText(text) {
-  return typeof text === 'string' ? text.replace(/[ \u3000]/g, ch => (ch === '\u3000' ? '␣␣' : '␣')) : text;
-}
-
 function getTextDiffDisplayValue(entry) {
   if (!entry) {
     return '';
@@ -7954,7 +7856,7 @@ function getTextDiffDisplayValue(entry) {
   if (entry.kind === 'boundary') {
     return entry.dominantValue || '∅';
   }
-  return visibleWhitespace(entry.baseChar || '');
+  return entry.baseChar || '';
 }
 
 function getSegmentTextDiffEntryByKey(segment, textDiffKey) {
@@ -8408,46 +8310,6 @@ function buildAlignmentDropReport(segment, candidates, stripPunctuationChars = '
     .filter(Boolean);
 }
 
-function isWhitespaceOnlyCharDiffSpan(span) {
-  return /^\s*$/.test(span?.original_snippet ?? '') && /^\s*$/.test(span?.restored_snippet ?? '');
-}
-
-// Corpus-sweep finding (FSZInspector cross-repo register, 2026-09-14): content_parity ===
-// "content_violation" is stamped unconditionally by the upstream recovery path, including for
-// harmless whitespace-only repairs — most real-world examples found were whitespace-only, not
-// genuine content problems. char_diff_detail is the only way to tell them apart. `truncated: true`
-// means some spans weren't included, so a "looks safe" verdict from the visible spans alone cannot
-// be trusted — stays unverified (conservative) rather than downgraded.
-function isContentViolationWhitespaceOnly(candidate) {
-  const detail = candidate?.charDiffDetail;
-  if (!detail || detail.truncated || !Array.isArray(detail.spans) || detail.spans.length === 0) {
-    return false;
-  }
-  return detail.spans.every(isWhitespaceOnlyCharDiffSpan);
-}
-
-function buildContentParityReport(candidates) {
-  if (!Array.isArray(candidates) || candidates.length === 0) {
-    return [];
-  }
-  return candidates
-    .filter(candidate => candidate && candidate.contentParity && candidate.contentParity !== 'exact')
-    .map(candidate => {
-      const whitespaceOnly = candidate.contentParity === 'content_violation' && isContentViolationWhitespaceOnly(candidate);
-      const severity = candidate.contentParity === 'content_violation' && !whitespaceOnly ? 'severe' : 'info';
-      return {
-        model: candidate.model || 'unknown',
-        contentParity: candidate.contentParity,
-        severity,
-        whitespaceOnly
-      };
-    })
-    .sort((a, b) => {
-      if (a.severity === b.severity) return 0;
-      return a.severity === 'severe' ? -1 : 1;
-    });
-}
-
 function getSegmentKwicDisplay(segment, stripPunctuationChars = '') {
   const originalCharMap = buildOriginalCharMap(
     segment?.original_text || segment?.stripped_text || '',
@@ -8460,7 +8322,7 @@ function getSegmentKwicDisplay(segment, stripPunctuationChars = '') {
   );
 }
 
-function getCandidateBoundaryTokens(candidate, segment, stripPunctuationChars = '', alignPunctuationToNextChar = false) {
+function getCandidateBoundaryTokens(candidate, segment, stripPunctuationChars = '') {
   if (candidate?.repunctuatedText != null) {
     const effectiveStripChars = candidate?.stripPunctuationChars || stripPunctuationChars || '';
     const sourceChars = [...stripTagNames(candidate.repunctuatedText || '')];
@@ -8500,14 +8362,7 @@ function getCandidateBoundaryTokens(candidate, segment, stripPunctuationChars = 
       }
 
       while (baseIndex < matchingChars.length && matchingChars[baseIndex] === '') {
-        // Punctuation popups: keep punctuation pending across slots this candidate dropped, so it
-        // lands on the next aligned base char exactly as collectCandidateWalk() assigns it (the
-        // marker's own position). Otherwise the KWIC preview draws it before the dropped slot while
-        // the marker sits after it, doubling the mark. Base text-diff popups use the same rule so the
-        // dropped slot previews before the punctuation; boundary text-diff popups keep their own rule.
-        if (!alignPunctuationToNextChar) {
-          flushPending(baseIndex);
-        }
+        flushPending(baseIndex);
         baseIndex += 1;
       }
 
@@ -8536,10 +8391,10 @@ function getCandidateBoundaryTokens(candidate, segment, stripPunctuationChars = 
   return new Map();
 }
 
-function getCandidateKwicDisplay(candidate, segment, stripPunctuationChars = '', alignPunctuationToNextChar = false) {
+function getCandidateKwicDisplay(candidate, segment, stripPunctuationChars = '') {
   return buildBoundaryTokenDisplay(
     getCandidateDisplayChars(candidate, segment, stripPunctuationChars),
-    getCandidateBoundaryTokens(candidate, segment, stripPunctuationChars, alignPunctuationToNextChar),
+    getCandidateBoundaryTokens(candidate, segment, stripPunctuationChars),
     ['punct', 'text']
   );
 }
@@ -8700,15 +8555,15 @@ function buildInlineViewHtml(segment, positionDiff, fractionalInsertions, insert
             classes.push('char-insertable');
           }
           const displayChar = isResolved
-            ? (getTextDiffValue(textDiff, textDiff.selected) || '∅')
+            ? (getTextDiffValue(textDiff, textDiff.selected) || textDiff.baseChar || char)
             : (textDiff.baseChar || char);
           const title = getTextDiffValueEntries(textDiff)
-            .map(([model, value]) => `${model}: ${visibleWhitespace(value) || '∅'}`)
+            .map(([model, value]) => `${model}: ${value || '∅'}`)
             .join(' | ');
       const isEmpty = displayChar === '∅';
       if (isEmpty) classes.push('adj-empty');
       const dataAttr = isEmpty ? ' data-adj-empty=""' : '';
-          html += `<span class="${classes.join(' ')}"${dataAttr} data-base-offset="${boundary + 1}" data-text-diff-index="${boundary}" data-text-diff-key="${escapeHtml(textDiff.key || formatBaseTextDiffKey(boundary))}" title="${escapeHtml(title)}">${escapeHtml(visibleWhitespace(displayChar))}</span>`;
+          html += `<span class="${classes.join(' ')}"${dataAttr} data-base-offset="${boundary + 1}" data-text-diff-index="${boundary}" data-text-diff-key="${escapeHtml(textDiff.key || formatBaseTextDiffKey(boundary))}" title="${escapeHtml(title)}">${escapeHtml(displayChar)}</span>`;
         } else if (insertionMode) {
           html += `<span class="char-insertable" data-base-offset="${boundary + 1}">${escapeHtml(char)}</span>`;
         } else {
@@ -9610,82 +9465,6 @@ const adjudicationTestSuites = [
       assert.equal(app.loadContextCache.hasPairingFailure, true, 'records blocking pairing failure');
       assert.equal(app.canBeginAdjudication, false, 'blocks CTA for partial mismatch');
       assert.equal(app.loadPreview.modelResults.some(result => result.pairing?.status === 'paired'), true, 'paired result remains visible');
-    }
-  },
-  {
-    name: 'T008-T-INTEGRATION cross-repo field contract regression',
-    async fn(assert) {
-      // FR-008 (spec 008): a source_markers-only candidate file must pair with zero
-      // warning when matched, and still be caught when mismatched.
-      const markersFile = createAdjudicationJsonTestFile('y003_00_markers.json', {
-        schema_version: '1',
-        segments: { '001': { id: '001', stripped_text: '甲乙', original_text: '甲乙' } }
-      });
-      const matchedFile = createAdjudicationJsonTestFile('y003_00_repunctuated_a.json', {
-        schema_version: '1',
-        source_markers: '/candidate/input/y003_00_markers.json',
-        model: 'a',
-        segments: { '001': { id: '001', repunctuated_text: '甲，乙' } }
-      });
-
-      const cleanApp = adjApp();
-      cleanApp.scheduleLoadCardAlignment = () => {};
-      await cleanApp.handleMarkersSelection(markersFile);
-      await cleanApp.handleModelSelections([matchedFile]);
-      assert.equal(cleanApp.loadPreview.modelResults.length, 1, 'FR-008 clean case: one result for one candidate file');
-      assert.equal(cleanApp.loadPreview.modelResults[0].pairing.status, 'paired', 'FR-008 clean case: source_markers-only file pairs successfully');
-      assert.equal(cleanApp.loadPreview.modelResults[0].warning, '', 'FR-008 clean case: zero pairing warning for a matched source_markers pair');
-      assert.equal(cleanApp.canBeginAdjudication, true, 'FR-008 clean case: 開始裁決 enabled with no mismatch present');
-
-      const wrongFile = createAdjudicationJsonTestFile('y004_00_repunctuated_b.json', {
-        schema_version: '1',
-        source_markers: '/candidate/input/y004_00_markers.json',
-        model: 'b',
-        segments: { '001': { id: '001', repunctuated_text: '甲。乙' } }
-      });
-      const mixedApp = adjApp();
-      mixedApp.scheduleLoadCardAlignment = () => {};
-      await mixedApp.handleMarkersSelection(markersFile);
-      await mixedApp.handleModelSelections([matchedFile, wrongFile]);
-      const mixedResults = mixedApp.loadPreview.modelResults;
-      const matchedResult = mixedResults.find(result => result.filename === matchedFile.name);
-      const wrongResult = mixedResults.find(result => result.filename === wrongFile.name);
-      assert.equal(matchedResult.pairing.status, 'paired', 'FR-008 mixed case: correctly-paired source_markers file still reports paired');
-      assert.equal(matchedResult.warning, '', 'FR-008 mixed case: correctly-paired file still shows zero warning');
-      assert.equal(wrongResult.pairing.status, 'mismatched', 'FR-008 mixed case: wrong-job source_markers file reports mismatched');
-      assert.includes(wrongResult.warning, wrongFile.name, 'FR-008 mixed case: mismatch warning names the offending file');
-      assert.equal(mixedApp.canBeginAdjudication, false, 'FR-008 mixed case: 開始裁決 disabled while any file is mismatched');
-
-      // FR-009 (spec 008): a legacy source_sidecar-only file (predating this feature,
-      // never regenerated) must keep pairing correctly, permanently — same protection,
-      // no deprecation/legacy-format messaging.
-      const legacyMatchedFile = createAdjudicationJsonTestFile('y003_00_repunctuated_legacy.json', {
-        schema_version: '1',
-        source_sidecar: '/candidate/input/y003_00_markers.json',
-        model: 'legacy',
-        segments: { '001': { id: '001', repunctuated_text: '甲、乙' } }
-      });
-      const legacyApp = adjApp();
-      legacyApp.scheduleLoadCardAlignment = () => {};
-      await legacyApp.handleMarkersSelection(markersFile);
-      await legacyApp.handleModelSelections([legacyMatchedFile]);
-      assert.equal(legacyApp.loadPreview.modelResults[0].pairing.status, 'paired', 'FR-009: legacy source_sidecar-only file still pairs successfully');
-      assert.equal(legacyApp.loadPreview.modelResults[0].warning, '', 'FR-009: no deprecation or legacy-format warning for a source_sidecar-only file');
-      assert.equal(legacyApp.canBeginAdjudication, true, 'FR-009: 開始裁決 enabled exactly as for a source_markers-based file');
-
-      const legacyWrongFile = createAdjudicationJsonTestFile('y003_00_repunctuated_legacy_wrong.json', {
-        schema_version: '1',
-        source_sidecar: '/candidate/input/y004_00_markers.json',
-        model: 'legacy',
-        segments: { '001': { id: '001', repunctuated_text: '甲；乙' } }
-      });
-      const legacyMismatchApp = adjApp();
-      legacyMismatchApp.scheduleLoadCardAlignment = () => {};
-      await legacyMismatchApp.handleMarkersSelection(markersFile);
-      await legacyMismatchApp.handleModelSelections([legacyWrongFile]);
-      assert.equal(legacyMismatchApp.loadPreview.modelResults[0].pairing.status, 'mismatched', 'FR-009: legacy source_sidecar-only file against the wrong markers file still reports mismatched');
-      assert.includes(legacyMismatchApp.loadPreview.modelResults[0].warning, legacyWrongFile.name, 'FR-009: mismatch warning names the offending legacy file exactly as it would for a source_markers file');
-      assert.equal(legacyMismatchApp.canBeginAdjudication, false, 'FR-009: 開始裁決 disabled for a mismatched legacy file, same protection as source_markers');
     }
   },
   {
@@ -12047,226 +11826,6 @@ const adjudicationTestSuites = [
     }
   },
   {
-    name: 'T002-T-UNIT buildLoadContext wires content_parity onto candidates, defaults to exact when absent',
-    async fn(assert) {
-      const app = adjApp();
-      const markersFile = {
-        name: 'job_markers.json',
-        text: async () => JSON.stringify({
-          schema_version: '2',
-          source_file: 'y001/y001_01.xml',
-          strip_punctuation_chars: '，。',
-          segments: [
-            { id: '001', tier: 5, stripped_text: '天地', original_text: '天地', inline_elements: [] },
-            { id: '002', tier: 1, stripped_text: '玄黃', original_text: '玄黃', inline_elements: [] }
-          ]
-        })
-      };
-      const modelA = {
-        name: 'claude_repunctuated.json',
-        text: async () => JSON.stringify({
-          schema_version: '2',
-          source_markers: 'job_markers.json',
-          model: 'claude',
-          segments: [
-            { id: '001', repunctuated_text: '天，地', content_parity: 'content_violation' },
-            { id: '002', repunctuated_text: '玄黃。' }
-          ]
-        })
-      };
-      const modelB = {
-        name: 'gpt_repunctuated.json',
-        text: async () => JSON.stringify({
-          schema_version: '2',
-          source_markers: 'job_markers.json',
-          model: 'gpt',
-          segments: [
-            { id: '001', repunctuated_text: '天，地' },
-            { id: '002', repunctuated_text: '玄黃。' }
-          ]
-        })
-      };
-
-      await app.LoadJob(markersFile, [modelA, modelB]);
-      const claudeCandidate = app.job.candidatesBySegment['001'].find(candidate => candidate.model === 'claude');
-      const gptCandidate = app.job.candidatesBySegment['001'].find(candidate => candidate.model === 'gpt');
-      const claudeSeg002 = app.job.candidatesBySegment['002'].find(candidate => candidate.model === 'claude');
-      assert.equal(claudeCandidate.contentParity, 'content_violation', 'reads content_parity from the repunctuated file onto the candidate');
-      assert.equal(gptCandidate.contentParity, 'exact', 'defaults to exact when the model file omits content_parity on this segment');
-      assert.equal(claudeSeg002.contentParity, 'exact', 'defaults to exact when the field is entirely absent from a segment record');
-    }
-  },
-  {
-    name: 'T004-T-UNIT buildContentParityReport filters exact, ranks content_violation first, flags unrecognized values conservatively',
-    fn(assert) {
-      const candidates = [
-        { model: 'claude', contentParity: 'exact' },
-        { model: 'gpt', contentParity: 'variant_accepted' },
-        { model: 'gemini', contentParity: 'content_violation' },
-        { model: 'future-model', contentParity: 'future_value' }
-      ];
-      const report = buildContentParityReport(candidates);
-      assert.equal(report.length, 3, 'excludes only the exact candidate');
-      assert.equal(report[0].model, 'gemini', 'content_violation is ranked first');
-      assert.equal(report[0].severity, 'severe', 'content_violation is severe');
-      const future = report.find(item => item.model === 'future-model');
-      assert.equal(future.contentParity, 'future_value', 'unrecognized value is preserved verbatim, not dropped');
-      assert.equal(future.severity, 'info', 'unrecognized value defaults to info severity, not severe');
-      assert.equal(buildContentParityReport([]).length, 0, 'empty candidates array returns an empty report');
-      assert.equal(buildContentParityReport(null).length, 0, 'non-array input returns an empty report rather than throwing');
-    }
-  },
-  {
-    name: 'T028-T-UNIT buildContentParityReport downgrades content_violation to info severity only when every char_diff_detail span is verified whitespace-only',
-    fn(assert) {
-      const whitespaceOnlyCandidate = {
-        model: 'modelA',
-        contentParity: 'content_violation',
-        charDiffDetail: {
-          total_spans: 1,
-          truncated: false,
-          spans: [{ tag: 'delete', original_snippet: '　', restored_snippet: '' }]
-        }
-      };
-      const substantiveCandidate = {
-        model: 'modelB',
-        contentParity: 'content_violation',
-        charDiffDetail: {
-          total_spans: 2,
-          truncated: false,
-          spans: [
-            { tag: 'delete', original_snippet: ' ', restored_snippet: '' },
-            { tag: 'delete', original_snippet: '甲', restored_snippet: '' }
-          ]
-        }
-      };
-      const truncatedWhitespaceLookingCandidate = {
-        model: 'modelC',
-        contentParity: 'content_violation',
-        charDiffDetail: {
-          total_spans: 40,
-          truncated: true,
-          spans: [{ tag: 'delete', original_snippet: '\n', restored_snippet: '' }]
-        }
-      };
-      const noDetailCandidate = { model: 'modelD', contentParity: 'content_violation' };
-
-      const report = buildContentParityReport([
-        whitespaceOnlyCandidate,
-        substantiveCandidate,
-        truncatedWhitespaceLookingCandidate,
-        noDetailCandidate
-      ]);
-
-      const byModel = model => report.find(item => item.model === model);
-
-      assert.equal(byModel('modelA').severity, 'info', 'a content_violation whose only diff span is whitespace is downgraded to info');
-      assert.equal(byModel('modelA').whitespaceOnly, true, 'whitespace-only flag is set for the downgraded candidate');
-
-      assert.equal(byModel('modelB').severity, 'severe', 'a content_violation with any non-whitespace span stays severe');
-      assert.equal(byModel('modelB').whitespaceOnly, false, 'whitespace-only flag is false when a span has real content');
-
-      assert.equal(byModel('modelC').severity, 'severe', 'a truncated char_diff_detail cannot be trusted to prove whitespace-only, even if every visible span looks safe — stays severe');
-      assert.equal(byModel('modelC').whitespaceOnly, false, 'truncated detail is never marked whitespace-only');
-
-      assert.equal(byModel('modelD').severity, 'severe', 'a content_violation with no char_diff_detail at all cannot be verified safe — stays severe (conservative default)');
-    }
-  },
-  {
-    name: "T006-T-INTEGRATION currentContentParityReport reflects the open segment's flagged candidates",
-    fn(assert) {
-      const app = adjApp();
-      const segments = [
-        { id: '001', stripped_text: '甲乙', original_text: '甲乙', inline_elements: [], textDiffs: new Map() },
-        { id: '002', stripped_text: '丙丁', original_text: '丙丁', inline_elements: [], textDiffs: new Map() }
-      ];
-      app.job = {
-        candidatesBySegment: {
-          '001': [
-            { model: 'claude', contentParity: 'content_violation' },
-            { model: 'gpt', contentParity: 'exact' }
-          ],
-          '002': [
-            { model: 'claude', contentParity: 'exact' }
-          ]
-        }
-      };
-      app.segments = segments;
-      app.filter = 'all';
-
-      assert.equal(app.currentContentParityReport().length, 0, 'no current segment yet ⇒ empty report');
-
-      app.OpenSegment(0);
-      assert.equal(app.currentContentParityReport().length, 1, 'segment 001 has one flagged candidate');
-      assert.equal(app.currentContentParityReport()[0].model, 'claude', 'flagged candidate is claude');
-
-      app.OpenSegment(1);
-      assert.equal(app.currentContentParityReport().length, 0, 'segment 002 has no flagged candidates');
-    }
-  },
-  {
-    name: 'T012-T-UNIT content-parity report is enabled by default and persists visibility to localStorage',
-    fn(assert) {
-      const storageKey = CONTENT_PARITY_REPORT_STORAGE_KEY;
-      const saved = localStorage.getItem(storageKey);
-      localStorage.removeItem(storageKey);
-      try {
-        const app = adjApp();
-        assert.equal(app.showContentParityReport, true, 'content-parity report defaults to visible');
-
-        app.setContentParityReportVisibility(false);
-        assert.equal(app.showContentParityReport, false, 'content-parity report can be disabled from settings');
-        assert.equal(localStorage.getItem(storageKey), 'off', 'content-parity toggle persists to localStorage');
-
-        app.setContentParityReportVisibility(true);
-        assert.equal(app.showContentParityReport, true, 'content-parity report can be re-enabled');
-        assert.equal(localStorage.getItem(storageKey), 'on', 'content-parity toggle persists the re-enabled state');
-      } finally {
-        if (saved == null) {
-          localStorage.removeItem(storageKey);
-        } else {
-          localStorage.setItem(storageKey, saved);
-        }
-      }
-    }
-  },
-  {
-    name: 'T019-T-UNIT progressStats.contentParityFlagged counts segments with at least one flagged candidate',
-    fn(assert) {
-      const app = adjApp();
-      const segments = [
-        { id: '001', stripped_text: '甲乙', original_text: '甲乙', inline_elements: [], textDiffs: new Map() },
-        { id: '002', stripped_text: '丙丁', original_text: '丙丁', inline_elements: [], textDiffs: new Map() },
-        { id: '003', stripped_text: '戊己', original_text: '戊己', inline_elements: [], textDiffs: new Map() }
-      ];
-      app.job = {
-        candidatesBySegment: {
-          '001': [
-            { model: 'claude', contentParity: 'content_violation' },
-            { model: 'gpt', contentParity: 'exact' }
-          ],
-          '002': [
-            { model: 'claude', contentParity: 'exact' },
-            { model: 'gpt', contentParity: 'variant_accepted' }
-          ],
-          '003': [
-            { model: 'claude', contentParity: 'exact' }
-          ]
-        }
-      };
-      app.segments = segments;
-      app.originalDiffs = {
-        '001': createEmptyPositionDiff(),
-        '002': createEmptyPositionDiff(),
-        '003': createEmptyPositionDiff()
-      };
-      app.adjudications = createUnreviewedAdjudications(segments);
-      app.filter = 'all';
-
-      assert.equal(app.progressStats.contentParityFlagged, 2, 'segments 001 and 002 each have >=1 flagged candidate; 003 has none');
-    }
-  },
-  {
     name: 'T022-T-SPEC insertion positions',
     fn(assert) {
       const first = calculateInsertionPosition(5, new Map());
@@ -12842,7 +12401,7 @@ const adjudicationTestSuites = [
       app.switchPopupKwicVersion('claude');
       assert.deepEqual(app.popupTextDiffContext(), { before: '甲乙，', focus: '參', after: '丁戊己庚辛', markerClass: 'textdiff-majority' }, 'hovering a text-diff row switches KWIC to that model character');
       app.switchPopupKwicVersion('gemini');
-      assert.deepEqual(app.popupTextDiffContext(), { before: '甲乙', focus: '∅', after: '。丁戊己庚', markerClass: 'textdiff-conflict' }, 'hovering an omitted text-diff row shows the empty focus before the candidate punctuation (same order as the inline markers)');
+      assert.deepEqual(app.popupTextDiffContext(), { before: '甲乙。', focus: '∅', after: '丁戊己庚辛', markerClass: 'textdiff-conflict' }, 'hovering an omitted text-diff row shows empty focus with insertion-point context');
       assert.equal(document.body.innerHTML.includes('@mouseenter="switchPopupKwicVersion(vote.model)"'), true, 'popup row template wires hover KWIC switching');
     }
   },
@@ -12983,7 +12542,7 @@ const adjudicationTestSuites = [
       app.switchPopupKwicVersion('claude');
       assert.deepEqual(app.popupTextDiffContext(), { before: '甲，乙，', focus: '參', after: '！丁', markerClass: 'textdiff-majority' }, 'hovered text-diff popup uses the candidate punctuated text');
       app.switchPopupKwicVersion('gemini');
-      assert.deepEqual(app.popupTextDiffContext(), { before: '甲，乙', focus: '∅', after: '。丁', markerClass: 'textdiff-conflict' }, 'omitted text-diff values show the empty focus before the candidate punctuation (same order as the inline markers)');
+      assert.deepEqual(app.popupTextDiffContext(), { before: '甲，乙。', focus: '∅', after: '丁', markerClass: 'textdiff-conflict' }, 'omitted text-diff values still keep punctuated insertion-point context');
     }
   },
   {
@@ -13988,411 +13547,6 @@ const adjudicationTestSuites = [
       assert.equal(app.currentSegmentIdx, 0, 'pending navigation reindexes to the remaining segment after the completed one is removed');
       assert.deepEqual(app.pendingSegments().map(segment => segment.id), ['002'], 'pending-only navigation skips the completed segment');
       assert.equal(app.segmentTitleHtml().includes('需處理 1 / 1'), true, 'segment counter refreshes against the recalculated pending list');
-    }
-  },
-  {
-    name: 'T018a-T-UNIT #18 a segment whose conflicts are resolved but has an unresolved text diff is still pending: next-segment navigation does not show the conflict-resolved dialog',
-    fn(assert) {
-      const app = adjApp();
-      const createConflictDiff = () => {
-        const diff = createEmptyPositionDiff();
-        diff.conflictPositions.set('1:0', {
-          key: '1:0', position: 1, basePosition: 1, slotIndex: 0, category: 'conflict', voteCount: 1,
-          chars: new Map([['claude', ['，']], ['gemini', ['。']], ['gpt', []]]),
-          dominantValue: '，', originalValue: '', differsFromOriginal: true, included: false,
-          resolved: false, autoResolved: false, userResolved: false, selectedModel: null, resolvedValue: null,
-          displayOrder: calculateComparisonDisplayOrder(1)
-        });
-        return diff;
-      };
-      const segments = [
-        { id: '001', stripped_text: '甲乙', original_text: '甲乙', inline_elements: [], textDiffs: new Map([[0, { category: 'majority', selected: null }]]) },
-        { id: '002', stripped_text: '丙丁', original_text: '丙丁', inline_elements: [], textDiffs: new Map() }
-      ];
-      app.job = { candidatesBySegment: { '001': [{ model: 'claude' }], '002': [{ model: 'claude' }] } };
-      app.segments = segments;
-      app.originalDiffs = { '001': createConflictDiff(), '002': createConflictDiff() };
-      app.adjudications = createUnreviewedAdjudications(segments);
-      app.filter = 'all';
-
-      app.OpenSegment(0);
-      app.ResolvePosition('001', '1:0', true, '，', 'claude');
-      assert.equal(app.currentSegmentStats().conflict, 0, 'all punctuation conflicts of 001 are resolved');
-      assert.equal(app.conflictResolvedDialogOpen, false, 'resolving the last conflict does not auto-open the dialog while a text diff is unresolved');
-      assert.equal(app.segmentReviewType('001'), 'text', '001 stays pending on its unresolved text diff');
-      assert.equal(app.currentSegmentHasAllConflictsResolved(), false, 'a pending-on-text segment is not "all handled"');
-
-      app.openNextSegment();
-      assert.equal(app.conflictResolvedDialogOpen, false, 'no conflict-resolved dialog for a segment that is still pending');
-      assert.equal(app.currentSegment?.id, '002', 'next-segment navigation moves on');
-    }
-  },
-  {
-    name: 'T018b-T-UNIT #18 confirmJumpNextConflict never wraps back onto the segment being left',
-    fn(assert) {
-      const app = adjApp();
-      const createConflictDiff = () => {
-        const diff = createEmptyPositionDiff();
-        diff.conflictPositions.set('1:0', {
-          key: '1:0', position: 1, basePosition: 1, slotIndex: 0, category: 'conflict', voteCount: 1,
-          chars: new Map([['claude', ['，']], ['gemini', ['。']], ['gpt', []]]),
-          dominantValue: '，', originalValue: '', differsFromOriginal: true, included: false,
-          resolved: false, autoResolved: false, userResolved: false, selectedModel: null, resolvedValue: null,
-          displayOrder: calculateComparisonDisplayOrder(1)
-        });
-        return diff;
-      };
-      const segments = [
-        { id: '001', stripped_text: '甲', original_text: '甲', inline_elements: [], textDiffs: new Map([[0, { category: 'majority', selected: null }]]) },
-        { id: '002', stripped_text: '乙', original_text: '乙', inline_elements: [], textDiffs: new Map() }
-      ];
-      app.job = { candidatesBySegment: { '001': [{ model: 'claude' }], '002': [{ model: 'claude' }] } };
-      app.segments = segments;
-      app.originalDiffs = { '001': createConflictDiff(), '002': createEmptyPositionDiff() };
-      app.adjudications = createUnreviewedAdjudications(segments);
-      app.filter = 'all';
-      app.OpenSegment(0);
-      app.ResolvePosition('001', '1:0', true, '，', 'claude');
-      assert.deepEqual(app.pendingSegments().map(s => s.id), ['001'], 'fixture: 001 (text diff only) is the sole pending segment');
-
-      app.filter = 'pending';
-      app.conflictResolvedResolvedSegmentId = '001';
-      app.confirmJumpNextConflict();
-      assert.equal(app.currentSegment?.id, '001', 'with no other pending segment the jump stays on the current segment');
-      assert.equal(app.filter, 'pending', 'the jump did nothing: the view filter was not switched to all (the old wraparound re-opened the same segment)');
-      assert.equal(app.conflictResolvedDialogOpen, false, 'dialog is closed');
-
-      // With a second pending segment the jump still advances to it.
-      app.originalDiffs = { ...app.originalDiffs, '002': createConflictDiff() };
-      app.adjudications = { ...app.adjudications };
-      assert.deepEqual(app.pendingSegments().map(s => s.id), ['001', '002'], 'fixture: 002 is now pending too');
-      app.conflictResolvedResolvedSegmentId = '001';
-      app.confirmJumpNextConflict();
-      assert.equal(app.currentSegment?.id, '002', 'jump advances to the next pending segment when one exists');
-    }
-  },
-  {
-    name: 'T018c-T-UNIT #18 openNextSegment resolves its target by id, so a commit-on-leave that drops the current segment from the pending list does not skip the next one',
-    fn(assert) {
-      const app = adjApp();
-      const createConflictDiff = () => {
-        const diff = createEmptyPositionDiff();
-        diff.conflictPositions.set('1:0', {
-          key: '1:0', position: 1, basePosition: 1, slotIndex: 0, category: 'conflict', voteCount: 1,
-          chars: new Map([['claude', ['，']], ['gemini', ['。']], ['gpt', []]]),
-          dominantValue: '，', originalValue: '', differsFromOriginal: true, included: false,
-          resolved: false, autoResolved: false, userResolved: false, selectedModel: null, resolvedValue: null,
-          displayOrder: calculateComparisonDisplayOrder(1)
-        });
-        return diff;
-      };
-      const segments = ['001', '002', '003'].map(id => ({
-        id, stripped_text: '甲乙', original_text: '甲乙', inline_elements: [], textDiffs: new Map()
-      }));
-      app.job = { candidatesBySegment: { '001': [{ model: 'claude' }], '002': [{ model: 'claude' }], '003': [{ model: 'claude' }] } };
-      app.segments = segments;
-      app.originalDiffs = { '001': createConflictDiff(), '002': createConflictDiff(), '003': createConflictDiff() };
-      app.adjudications = createUnreviewedAdjudications(segments);
-      app.filter = 'pending';
-      app.OpenSegment(0);
-      assert.equal(app.currentSegment?.id, '001', 'fixture: 001 is open');
-
-      // Simulate a commit-on-leave that completes the departing segment and so removes it from
-      // the pending list at the moment of leaving (every later index shifts down by one).
-      const realCommit = app.commitCurrentSegmentOnLeave.bind(app);
-      app.commitCurrentSegmentOnLeave = function () {
-        const id = this.currentSegment?.id;
-        if (id === '001') {
-          this.adjudications = { ...this.adjudications, '001': { status: 'accepted', goldenText: '甲乙', sourceModel: 'claude', edited: false } };
-        }
-        return realCommit();
-      };
-      app.openNextSegment();
-      assert.equal(app.currentSegment?.id, '002', 'opens 002 (the segment that was next), not 003');
-      assert.deepEqual(app.pendingSegments().map(s => s.id), ['002', '003'], '001 left the pending list');
-    }
-  },
-  {
-    name: 'T018d-T-BDD #18 segment toolbar badge 段落內文字不一致 counts base (char-level) text diffs too, so a segment pending only on a space diff shows what is blocking it',
-    fn(assert) {
-      const app = adjApp();
-      app.segments = [{
-        id: '003',
-        stripped_text: '所在 其母',
-        original_text: '所在 。其母',
-        inline_elements: [],
-        textDiffs: new Map([[2, {
-          key: 'char:2', kind: 'base', index: 2, category: 'majority', baseChar: ' ', dominantValue: ' ', voteCount: 2,
-          values: new Map([['claude', ' '], ['gemini', ''], ['gpt', ' ']])
-        }]]),
-        boundaryTextDiffs: new Map()
-      }];
-      app.filter = 'all';
-      app.currentSegmentIdx = 0;
-      app.originalDiffs = { '003': createEmptyPositionDiff() };
-      app.positionMaps = { '003': createEmptyPositionDiff() };
-      app.fractionalInsertions = { '003': new Map() };
-
-      const all = app.currentSegmentTextDiffStats();
-      assert.equal(all.visible, true, 'all-diffs stats are visible for a base-only segment');
-      assert.equal(all.unresolved, 1, 'the unresolved space diff is counted');
-
-      // Inspect the real toolbar markup (document.body.innerHTML also contains this test's own source).
-      // The segment view lives inside x-if templates, so read the template content.
-      const toolbar = [...document.querySelectorAll('template')]
-        .map(template => template.innerHTML)
-        .find(markup => markup.includes('adj-stats-card')) ?? '';
-      assert.equal(toolbar.length > 0, true, 'segment stats toolbar is present in the page');
-      const boundaryOnlyStats = 'currentSegment' + 'Textdiff' + 'Stats()';
-      assert.equal(toolbar.includes('x-if="currentSegmentTextDiffStats().visible"'), true, 'toolbar badge row is gated on the all-diffs stats');
-      assert.equal(toolbar.includes(boundaryOnlyStats), false, 'toolbar badge row no longer uses the boundary-only stats');
-      assert.equal(toolbar.includes('x-text="currentSegmentTextDiffStats().unresolved"'), true, 'badge shows the all-diffs unresolved count');
-      assert.equal(toolbar.includes('x-text="currentSegmentTextDiffStats().resolved"'), true, 'badge shows the all-diffs resolved count');
-
-      app.segments[0].textDiffs.get(2).selected = 'claude';
-      const after = app.currentSegmentTextDiffStats();
-      assert.equal(after.resolved, 1, 'resolving the space diff moves it to the resolved count');
-      assert.equal(after.unresolved, 0, 'no unresolved text diff remains');
-    }
-  },
-  {
-    name: 'T018e-T-BDD #18 whitespace-only text-diff values are shown with a visible glyph (display only; the stored value is untouched)',
-    fn(assert) {
-      assert.equal(visibleWhitespace(' '), '␣', 'ASCII space gets the glyph');
-      assert.equal(visibleWhitespace('　'), '␣␣', 'ideographic (double-byte) space gets the double glyph, distinct from a single-byte space');
-      assert.equal(visibleWhitespace('  '), '␣␣', 'two single-byte spaces are shown one glyph each');
-      assert.equal(visibleWhitespace('甲'), '甲', 'a real character is unchanged');
-      assert.equal(visibleWhitespace(''), '', 'empty stays empty (callers decide ∅)');
-      assert.equal(visibleWhitespace(' 甲'), ' 甲', 'mixed text is unchanged');
-
-      const textDiff = {
-        key: 'char:2', kind: 'base', index: 2, category: 'majority', baseChar: ' ', dominantValue: ' ', voteCount: 2,
-        values: new Map([['claude', ' '], ['gemini', ''], ['gpt', ' ']])
-      };
-      const segment = {
-        id: '003', stripped_text: '所在 其母', original_text: '所在 其母', inline_elements: [],
-        textDiffs: new Map([[2, textDiff]]), boundaryTextDiffs: new Map()
-      };
-      const html = buildInlineViewHtml(segment, createEmptyPositionDiff(), new Map(), false);
-      const marker = html.match(/<span class="[^"]*textdiff-base[^"]*"[^>]*>([^<]*)<\/span>/);
-      assert.equal(marker !== null, true, 'the base text-diff marker is rendered');
-      assert.equal(marker[1], '␣', 'the marker shows the glyph instead of a blank space');
-      assert.equal(html.includes('claude: ␣'), true, 'marker tooltip uses the glyph for whitespace values');
-      assert.equal(html.includes('gemini: ∅'), true, 'marker tooltip keeps ∅ for an empty value');
-      assert.equal(textDiff.baseChar, ' ', 'stored base character is still a real space');
-      assert.equal(textDiff.values.get('claude'), ' ', 'stored model value is still a real space');
-
-      const app = adjApp();
-      app.job = { candidatesBySegment: { '003': [{ model: 'claude' }, { model: 'gemini' }, { model: 'gpt' }] } };
-      app.segments = [segment];
-      app.filter = 'all';
-      app.currentSegmentIdx = 0;
-      app.popupTextDiffIndex = 'char:2';
-      const votes = app.popupTextDiffVotes();
-      assert.deepEqual(votes.map(vote => vote.value), ['␣', '∅', '␣'], 'popup shows ␣ / ∅ / ␣ for the three models');
-
-      const wideDiff = {
-        key: 'char:2', kind: 'base', index: 2, category: 'majority', baseChar: '　', dominantValue: '　', voteCount: 2,
-        values: new Map([['claude', '　'], ['gemini', ' '], ['gpt', '　']])
-      };
-      const wideSegment = {
-        id: '004', stripped_text: '所在　其母', original_text: '所在　其母', inline_elements: [],
-        textDiffs: new Map([[2, wideDiff]]), boundaryTextDiffs: new Map()
-      };
-      const wideHtml = buildInlineViewHtml(wideSegment, createEmptyPositionDiff(), new Map(), false);
-      const wideMarker = wideHtml.match(/<span class="[^"]*textdiff-base[^"]*"[^>]*>([^<]*)<\/span>/);
-      assert.equal(wideMarker[1], '␣␣', 'a double-byte space marker shows ␣␣');
-      assert.equal(wideHtml.includes('claude: ␣␣'), true, 'tooltip distinguishes the double-byte space');
-      assert.equal(wideHtml.includes('gemini: ␣'), true, 'and the single-byte space');
-      assert.equal(wideDiff.baseChar, '　', 'stored value is still the real double-byte space');
-    }
-  },
-  {
-    name: 'T018f-T-BDD #18 popup KWIC preview draws a candidate 。 once when the candidate dropped the whitespace slot next to it (gemini on y066_02/003)',
-    async fn(assert) {
-      const markers = createAdjudicationJsonTestFile('t_markers.json', {
-        schema_version: '2',
-        strip_punctuation_chars: '，。',
-        segments: [{ id: '003', stripped_text: '失所在 其母祝曰', original_text: '失所在 。其母祝曰。', inline_elements: [] }]
-      });
-      const candidate = (model, text) => createAdjudicationJsonTestFile(`t_repunctuated_${model}.json`, {
-        schema_version: '2', source_markers: 't_markers.json', model,
-        segments: [{ id: '003', repunctuated_text: text }]
-      });
-      const app = adjApp();
-      const ctx = await app.buildLoadContext(markers, [
-        candidate('claude', '失所在 。其母祝曰。'),
-        candidate('gemini', '失所在。其母祝曰。'),
-        candidate('gpt', '失所在 其母祝曰。')
-      ]);
-      const segment = ctx.segments[0];
-      const gemini = ctx.candidatesBySegment['003'].find(item => item.model === 'gemini');
-
-      const walk = collectCandidateWalk(gemini.repunctuatedText, segment.stripped_text, '，。');
-      const kwicTokens = getCandidateBoundaryTokens(gemini, segment, '，。', true);
-      assert.deepEqual([...kwicTokens.keys()].sort(), [...walk.boundaryTokens.keys()].sort(), 'KWIC boundary tokens sit at the same positions as the comparison model');
-      assert.equal(kwicTokens.has(4), true, 'gemini 。 belongs to the boundary before 其, after the dropped space slot');
-      assert.equal(kwicTokens.has(3), false, 'and not to the boundary before the dropped space');
-
-      app.job = { stripPunctuationChars: '，。', candidatesBySegment: ctx.candidatesBySegment };
-      app.segments = ctx.segments;
-      app.originalDiffs = ctx.originalDiffs;
-      app.positionMaps = { '003': clonePositionDiff(ctx.originalDiffs['003']) };
-      app.filter = 'all';
-      app.currentSegmentIdx = 0;
-      app.openPositionPopup('4:0', { getBoundingClientRect: () => ({ left: 10, right: 40, bottom: 20, top: 5 }) });
-      app.switchPopupKwicVersion('gemini');
-      const kwic = app.popupContext();
-      assert.equal(kwic.focus, '。', 'the focused marker is the gemini 。');
-      assert.equal(kwic.before.includes('。'), false, 'the left context does not repeat the 。 (no 所在。[。])');
-      app.switchPopupKwicVersion('claude');
-      const claudeKwic = app.popupContext();
-      assert.equal(kwic.after, claudeKwic.after, 'the right context matches the other model that placed the same 。 (only the dropped space differs on the left)');
-      assert.equal(kwic.before, '失所在', 'gemini left context is its own text up to the dropped space');
-      assert.equal(claudeKwic.before, '失所在 ', 'claude left context keeps the space');
-    }
-  },
-  {
-    name: 'T018g-T-BDD #18 text-diff popup preview puts the empty slot before the candidate 。, like the inline markers (gemini on y066_02/003: 所在[∅]。其母)',
-    async fn(assert) {
-      const markers = createAdjudicationJsonTestFile('t_markers.json', {
-        schema_version: '2',
-        strip_punctuation_chars: '，。',
-        segments: [{ id: '003', stripped_text: '失所在 其母祝曰', original_text: '失所在 。其母祝曰。', inline_elements: [] }]
-      });
-      const candidate = (model, text) => createAdjudicationJsonTestFile(`t_repunctuated_${model}.json`, {
-        schema_version: '2', source_markers: 't_markers.json', model,
-        segments: [{ id: '003', repunctuated_text: text }]
-      });
-      const app = adjApp();
-      const ctx = await app.buildLoadContext(markers, [
-        candidate('claude', '失所在 。其母祝曰。'),
-        candidate('gemini', '失所在。其母祝曰。'),
-        candidate('gpt', '失所在 其母祝曰。')
-      ]);
-      app.job = { stripPunctuationChars: '，。', candidatesBySegment: ctx.candidatesBySegment };
-      app.segments = ctx.segments;
-      app.originalDiffs = ctx.originalDiffs;
-      app.positionMaps = { '003': clonePositionDiff(ctx.originalDiffs['003']) };
-      app.filter = 'all';
-      app.currentSegmentIdx = 0;
-      app.openTextDiffPopup(3, { getBoundingClientRect: () => ({ left: 10, right: 40, bottom: 20, top: 5 }) });
-
-      app.switchPopupKwicVersion('gemini');
-      const gemini = app.popupTextDiffContext();
-      assert.equal(gemini.focus, '∅', 'gemini dropped the space');
-      assert.equal(gemini.before, '失所在', 'the left context stops before the empty slot (no 。 before it)');
-      assert.equal(gemini.after, '。其母祝曰', 'the 。 follows the empty slot, matching the inline marker order');
-
-      app.switchPopupKwicVersion('claude');
-      const claude = app.popupTextDiffContext();
-      assert.equal(claude.focus, ' ', 'claude kept the space');
-      assert.equal(claude.before, '失所在', 'claude left context');
-      assert.equal(claude.after, '。其母祝曰', 'claude 。 follows the space');
-    }
-  },
-  {
-    name: 'T018h-T-BDD #18 popup KWIC previews (punctuation and text-diff) show every space as the glyph, in the context and the focus; the raw popup context is unchanged',
-    async fn(assert) {
-      assert.equal(visibleWhitespaceText('失所在 。其'), '失所在␣。其', 'a single-byte space in a context string gets the glyph');
-      assert.equal(visibleWhitespaceText('甲　乙'), '甲␣␣乙', 'a double-byte space gets the double glyph');
-      assert.equal(visibleWhitespaceText('甲 乙　丙'), '甲␣乙␣␣丙', 'single-byte and double-byte spaces stay distinguishable in one string');
-      assert.equal(visibleWhitespaceText('甲乙'), '甲乙', 'text without whitespace is unchanged');
-
-      const markers = createAdjudicationJsonTestFile('t_markers.json', {
-        schema_version: '2',
-        strip_punctuation_chars: '，。',
-        segments: [{ id: '003', stripped_text: '失所在 其母祝曰', original_text: '失所在 。其母祝曰。', inline_elements: [] }]
-      });
-      const candidate = (model, text) => createAdjudicationJsonTestFile(`t_repunctuated_${model}.json`, {
-        schema_version: '2', source_markers: 't_markers.json', model,
-        segments: [{ id: '003', repunctuated_text: text }]
-      });
-      const app = adjApp();
-      const ctx = await app.buildLoadContext(markers, [
-        candidate('claude', '失所在 。其母祝曰。'),
-        candidate('gemini', '失所在。其母祝曰。'),
-        candidate('gpt', '失所在 其母祝曰。')
-      ]);
-      app.job = { stripPunctuationChars: '，。', candidatesBySegment: ctx.candidatesBySegment };
-      app.segments = ctx.segments;
-      app.originalDiffs = ctx.originalDiffs;
-      app.positionMaps = { '003': clonePositionDiff(ctx.originalDiffs['003']) };
-      app.filter = 'all';
-      app.currentSegmentIdx = 0;
-      const anchor = { getBoundingClientRect: () => ({ left: 10, right: 40, bottom: 20, top: 5 }) };
-
-      app.openPositionPopup('4:0', anchor);
-      app.switchPopupKwicVersion('claude');
-      assert.equal(app.popupContext().before, '失所在 ', 'raw popup context keeps the real space');
-      assert.equal(app.popupContextDisplay().before, '失所在␣', 'displayed punctuation preview shows the glyph for the space');
-      assert.equal(app.popupContextDisplay().focus, '。', 'the punctuation focus is unchanged');
-
-      app.openTextDiffPopup(3, anchor);
-      app.switchPopupKwicVersion('claude');
-      assert.equal(app.popupTextDiffContext().focus, ' ', 'raw text-diff focus keeps the real space');
-      assert.equal(app.popupTextDiffContextDisplay().focus, '␣', 'displayed text-diff focus shows the glyph');
-      app.switchPopupKwicVersion('gemini');
-      assert.equal(app.popupTextDiffContextDisplay().focus, '∅', 'an empty value is still ∅');
-
-      const kwicMarkup = [...document.querySelectorAll('template')].map(template => template.innerHTML).filter(markup => markup.includes('adj-popup-kwic-focus')).join('');
-      assert.equal(kwicMarkup.includes('x-text="popupContextDisplay().focus"'), true, 'punctuation popup template renders the display variant');
-      assert.equal(kwicMarkup.includes('x-text="popupTextDiffContextDisplay().focus"'), true, 'text-diff popup template renders the display variant');
-      assert.equal(kwicMarkup.includes('x-text="popupContext().focus"'), false, 'punctuation popup template no longer renders the raw context');
-    }
-  },
-  {
-    name: 'T018i-T-BDD #18 an adjudicated text diff (base or boundary) can be reopened by clicking it, re-resolved to another model, and shows the new choice',
-    fn(assert) {
-      const app = adjApp();
-      const baseDiff = {
-        key: 'char:2', kind: 'base', index: 2, category: 'majority', baseChar: ' ', dominantValue: ' ', voteCount: 2,
-        values: new Map([['claude', ' '], ['gemini', ''], ['gpt', ' ']])
-      };
-      app.job = { candidatesBySegment: { '003': [{ model: 'claude' }, { model: 'gemini' }, { model: 'gpt' }] } };
-      app.segments = [{
-        id: '003', stripped_text: '所在 其母', original_text: '所在 其母', inline_elements: [],
-        textDiffs: new Map([[2, baseDiff]]), boundaryTextDiffs: new Map()
-      }];
-      app.filter = 'all';
-      app.currentSegmentIdx = 0;
-      app.originalDiffs = { '003': createEmptyPositionDiff() };
-      app.positionMaps = { '003': createEmptyPositionDiff() };
-      app.fractionalInsertions = { '003': new Map() };
-      app.debouncedSaveSession = () => {};
-      app.syncSegmentCompletion = () => false;
-
-      baseDiff.selected = 'claude';
-      const host = document.createElement('div');
-      host.innerHTML = app.renderCurrentInlineViewHtml();
-      const resolvedMarker = host.querySelector('.marker-textmismatch-resolved.textdiff-base');
-      assert.equal(resolvedMarker !== null, true, 'the resolved base text diff renders with the resolved class');
-      assert.equal(resolvedMarker.textContent, '␣', 'it shows the chosen value (claude kept the space)');
-
-      const opened = [];
-      const realOpenTextDiffPopup = app.openTextDiffPopup;
-      app.openTextDiffPopup = (key, element) => { opened.push(key); };
-      app.handleMarkerClick({ target: resolvedMarker });
-      assert.deepEqual(opened, ['char:2'], 'clicking a RESOLVED base text diff opens its popup');
-
-      // the popup reflects the current choice and lets the adjudicator change it
-      app.openTextDiffPopup = realOpenTextDiffPopup;
-      app.openTextDiffPopup(2, { getBoundingClientRect: () => ({ left: 10, right: 40, bottom: 20, top: 5 }) });
-      assert.equal(app.popupTextDiffVotes().find(vote => vote.selected)?.model, 'claude', 'the popup marks the current choice');
-      app.resolveTextDiffVote({ model: 'gemini' });
-      assert.equal(baseDiff.selected, 'gemini', 'the choice can be changed again');
-      host.innerHTML = app.renderCurrentInlineViewHtml();
-      assert.equal(host.querySelector('.marker-textmismatch-resolved.textdiff-base').textContent, '∅', 'a base diff resolved to a dropped value shows ∅, not the original character');
-
-      // boundary text diffs resolved earlier are reopenable the same way
-      const boundaryTarget = document.createElement('span');
-      boundaryTarget.className = 'marker-textmismatch-resolved textdiff-boundary textdiff-majority';
-      boundaryTarget.dataset.textDiffKey = 'boundary:1:0';
-      const boundaryInner = document.createElement('span');
-      boundaryTarget.appendChild(boundaryInner);
-      app.openTextDiffPopup = (key, element) => { opened.push(key); };
-      app.handleMarkerClick({ target: boundaryInner });
-      assert.equal(opened[opened.length - 1], 'boundary:1:0', 'clicking a RESOLVED boundary text diff opens its popup');
     }
   },
   {
@@ -20481,40 +19635,6 @@ function getReleaseNotesHtml() {
       <h3>📦 版本 V1 (003-adjudication-editor) — 裁決編輯器</h3>
       <p><strong>發布日期：</strong>2026-06</p>
 
-      <h4>Hotfix（2026-10-07）— 單字文字差異（如空格）重新顯示於統計列，並修正標點選單前後文重複標點（#18）</h4>
-      <ul>
-        <li>「段落內文字不一致」統計現在計入段落內所有文字差異（單字差異與標點邊界差異），與總覽的「文字」計數一致；僅剩空格差異而無法離開「需處理」的段落，現在可在統計列看到未處理數量</li>
-        <li>空白字元的文字差異在標記、提示文字與選單中以 <code>␣</code> 顯示，不再是看不見的細框；空值仍顯示 <code>∅</code>；僅為顯示，資料不變</li>
-        <li>修正標點選單中，某模型刪去鄰近空格時其標點在前後文與標記各出現一次（如「所在。[。]」）的問題：現在只顯示一次；文字差異選單的前後文同樣將空位顯示在該標點之前（如「所在[∅]。其母」），與正文標記順序一致</li>
-        <li>標記、提示文字與選單的前後文預覽中，半形空格以 <code>␣</code>、全形空格（U+3000）以 <code>␣␣</code> 顯示，僅為顯示，資料不變（停頓 <code>&lt;caesura/&gt;</code> 在匯出文字中即為全形空格 U+3000，與真正的全形空格相同，同樣顯示為 <code>␣␣</code>）</li>
-        <li>已裁決的文字差異可再次點選開啟選單並改選其他模型；改選為「刪除」的模型時，標記顯示 <code>∅</code> 而非原字元</li>
-        <li>「文字不一致」開關的作用範圍未變（仍只隱藏標點邊界標記）</li>
-      </ul>
-
-      <h4>Hotfix（2026-10-06）— 待處理段落導覽不再卡在僅剩文字差異的段落（#18）</h4>
-      <ul>
-        <li>修復「跳往下一段」在只剩一個待處理段落時繞回目前段落的問題：沒有其他待處理段落時維持原狀，不再重新開啟同一段</li>
-        <li>段落仍有未解決的文字差異時，不再顯示「本段衝突已處理」對話框（含解決最後一個標點衝突時的自動彈出，以及按「下一段」時），因為該段仍屬待處理</li>
-        <li>「下一段」改以段落編號定位目標，離開目前段落而使其從待處理清單移除時，不會跳過下一段</li>
-        <li>文字差異不會被自動決定，仍需由裁決者逐一選取</li>
-      </ul>
-
-      <h4>功能新增（2026-09-14）— 內容完整性提示（Feature 009）</h4>
-      <ul>
-        <li>讀取候選檔每個段落的 <code>content_parity</code> 驗證結果；任一候選未通過時，於段落統計列顯示「內容標記」徽章，嚴重程度以現有警示色區分：內容比對未通過（超過空白差異或無法驗證）為較嚴重，「接受異體字」或僅空白差異者為較輕微</li>
-        <li>段落畫面新增「內容完整性提示」卡片，逐一列出被標記候選的模型名稱與說明；設定欄可顯示／隱藏此卡片，預設顯示，選擇保存於瀏覽器並跨工作階段保留</li>
-        <li>總覽畫面新增「內容標記段落」計數，無標記段落時不顯示</li>
-        <li>有逐字差異資料時，據以驗證是否僅為空白差異；差異資料不完整時不視為僅空白差異</li>
-        <li>僅供參考：不影響可選擇的候選、標點比對與分類，也不改變匯出的 golden 檔；未帶 <code>content_parity</code> 欄位的舊候選檔照常載入</li>
-      </ul>
-
-      <h4>相容性調整（2026-09-13）— 候選檔配對欄位統一為 <code>source_markers</code>（Feature 008）</h4>
-      <ul>
-        <li>配對欄位正式以 <code>source_markers</code> 為標準名稱；既有僅含 <code>source_sidecar</code> 的舊候選檔永久照常配對，不顯示任何舊格式提示</li>
-        <li>配對與不吻合偵測行為不變，「開始裁決」啟用條件不變；本版僅新增跨工具欄位迴歸測試，使用者操作無差異</li>
-        <li>不更動 <code>schema_version</code>；工具仍僅接受 markers 版本 <code>1</code>／<code>2</code></li>
-      </ul>
-
       <h4>功能新增（2026-09-03）— 工作檔配對防護與選擇器資料夾記憶（Feature 007）</h4>
       <ul>
         <li>載入工作檔時依 markers 與 repunctuated 檔名的工作識別逐一驗證配對，並以 <code>source_sidecar</code> 的檔名部分作為內部參照確認</li>
@@ -20863,7 +19983,6 @@ function adjApp() {
     themeMode: normalizeThemeMode(localStorage.getItem(THEME_MODE_STORAGE_KEY)),
     kwicDisplayMode: normalizeKwicDisplayMode(localStorage.getItem(KWIC_DISPLAY_MODE_STORAGE_KEY)),
     showAlignmentDropReport: normalizeAlignmentDropReportVisibility(localStorage.getItem(ALIGNMENT_DROP_REPORT_STORAGE_KEY)),
-    showContentParityReport: normalizeContentParityReportVisibility(localStorage.getItem(CONTENT_PARITY_REPORT_STORAGE_KEY)),
     sourceXmlDirHandle: null,
     sourceXmlDirName: '',
     sourceXmlDirPermission: 'missing',
@@ -20911,7 +20030,6 @@ function adjApp() {
       this.applyThemeMode();
       this.kwicDisplayMode = normalizeKwicDisplayMode(localStorage.getItem(KWIC_DISPLAY_MODE_STORAGE_KEY));
       this.showAlignmentDropReport = normalizeAlignmentDropReportVisibility(localStorage.getItem(ALIGNMENT_DROP_REPORT_STORAGE_KEY));
-      this.showContentParityReport = normalizeContentParityReportVisibility(localStorage.getItem(CONTENT_PARITY_REPORT_STORAGE_KEY));
       this.sourceXmlDirName = localStorage.getItem('source_xml_dir_name') || '';
       this.sourceXmlDirPermission = this.sourceXmlDirName ? 'prompt' : 'missing';
       this.jobFilePickerSupported = typeof window.showOpenFilePicker === 'function' && window.isSecureContext !== false;
@@ -21427,14 +20545,6 @@ function adjApp() {
       );
     },
 
-    setContentParityReportVisibility(enabled) {
-      this.showContentParityReport = !!enabled;
-      localStorage.setItem(
-        CONTENT_PARITY_REPORT_STORAGE_KEY,
-        this.showContentParityReport ? 'on' : 'off'
-      );
-    },
-
     openRestoreDialog(mode = 'restore') {
       this.restoreDialogMode = mode || 'restore';
       const dialog = this.$refs?.restoreDialog;
@@ -21846,7 +20956,6 @@ function adjApp() {
       let conflictTextOnly = 0;
       let conflictBoth = 0;
       let needsReview = 0;
-      let contentParityFlagged = 0;
 
       this.segments.forEach(segment => {
         const status = this.getAdjudicationState(segment.id).status;
@@ -21870,7 +20979,6 @@ function adjApp() {
         if (reviewType === 'punct') conflictPunctOnly += 1;
         if (reviewType === 'text') conflictTextOnly += 1;
         if (reviewType === 'both') conflictBoth += 1;
-        if (this.segmentContentParityFlagCount(segment.id) > 0) contentParityFlagged += 1;
       });
 
       return {
@@ -21885,8 +20993,7 @@ function adjApp() {
         needsReview,
         conflictPunctOnly,
         conflictTextOnly,
-        conflictBoth,
-        contentParityFlagged
+        conflictBoth
       };
     },
 
@@ -22080,9 +21187,7 @@ function adjApp() {
             alignedChars: walked.alignedChars,
             stripPunctuationChars: stripChars,
             punctuationRatio: segment.punctuation_ratio ?? segment.confidence ?? null,
-            confidence: segment.confidence ?? segment.punctuation_ratio ?? null,
-            contentParity: segment.content_parity ?? 'exact',
-            charDiffDetail: segment.char_diff_detail ?? null
+            confidence: segment.confidence ?? segment.punctuation_ratio ?? null
           };
           result.segmentsMap.set(segment.id, candidate);
           candidatesBySegment[segment.id].push(candidate);
@@ -22590,10 +21695,6 @@ function adjApp() {
       };
     },
 
-    segmentContentParityFlagCount(segmentId) {
-      return buildContentParityReport(this.getCandidates(segmentId)).length;
-    },
-
     segmentHasUnresolvedTextDiffs(segmentOrId) {
       const segment = typeof segmentOrId === 'object'
         ? segmentOrId
@@ -22797,13 +21898,6 @@ function adjApp() {
       );
     },
 
-    currentContentParityReport() {
-      if (!this.currentSegment) {
-        return [];
-      }
-      return buildContentParityReport(this.getCandidates(this.currentSegment.id));
-    },
-
     AcceptCandidate(segmentId, modelName) {
       const candidate = this.getCandidates(segmentId).find(item => item.model === modelName);
       if (!candidate) {
@@ -22915,20 +22009,13 @@ function adjApp() {
           this.openConflictResolvedDialog(this.currentSegmentIdx + 1, this.currentSegment?.id);
           return;
         }
-        // Resolve the target by id: committing the current segment can drop it from the
-        // pending list and shift every later index down by one (#18c).
-        const targetId = this.filteredSegments[this.currentSegmentIdx + 1]?.id;
-        this.commitCurrentSegmentOnLeave();
-        const targetIdx = targetId ? this.filteredSegments.findIndex(s => s.id === targetId) : -1;
-        this.OpenSegment(targetIdx >= 0 ? targetIdx : this.currentSegmentIdx + 1);
+        this.OpenSegment(this.currentSegmentIdx + 1);
       }
     },
 
     currentSegmentHasAllConflictsResolved() {
       const segmentId = this.currentSegment?.id;
       if (!segmentId) return false;
-      // A segment with unselected text diffs is still pending; "all handled" would be wrong (#18b).
-      if (this.segmentHasUnresolvedTextDiffs(this.currentSegment)) return false;
       if (['edited', 'accepted'].includes(this.getAdjudicationState(segmentId).status)) return false;
       if (!Object.prototype.hasOwnProperty.call(this.positionMaps, segmentId)) return false;
       const diff = this.positionMaps[segmentId];
@@ -22969,12 +22056,9 @@ function adjApp() {
       if (pending.length === 0) return;
 
       const currentOrder = this.segments.findIndex(s => s.id === savedSegmentId);
-      // Never wrap back onto the segment being left (#18a).
-      const candidates = pending.filter(s => s.id !== savedSegmentId);
-      if (candidates.length === 0) return;
-      const nextPending = candidates.find(s =>
+      const nextPending = pending.find(s =>
         this.segments.findIndex(seg => seg.id === s.id) > currentOrder
-      ) || candidates[0];
+      ) || pending[0];
 
       this.filter = 'all';
       const nextIdx = this.filteredSegments.findIndex(s => s.id === nextPending.id);
@@ -23353,7 +22437,7 @@ function adjApp() {
                 after: collectContextAfter(chars, boundary)
               };
             }
-            const display = getCandidateKwicDisplay(candidate, this.currentSegment, stripChars, true);
+            const display = getCandidateKwicDisplay(candidate, this.currentSegment, stripChars);
             return collectPunctuatedBoundaryGroupKwic(display, boundary, rawValue || '∅');
           }
         }
@@ -23381,7 +22465,7 @@ function adjApp() {
               after: collectContextAfter(chars, boundary)
             };
           }
-          const display = getCandidateKwicDisplay(candidate, this.currentSegment, stripChars, true);
+          const display = getCandidateKwicDisplay(candidate, this.currentSegment, stripChars);
           return collectPunctuatedSlotKwic(display, boundary, slotKey, rawValue || '∅');
         }
       }
@@ -23395,27 +22479,6 @@ function adjApp() {
       }
       const display = getSegmentKwicDisplay(this.currentSegment, stripChars);
       return collectPunctuatedSlotKwic(display, boundary, slotKey, this.popupDisplayValue());
-    },
-
-    // Display variant of popupContext(): spaces shown as the glyph. The raw method stays for logic/tests.
-    popupContextDisplay() {
-      const context = this.popupContext();
-      return {
-        ...context,
-        before: visibleWhitespaceText(context.before),
-        focus: visibleWhitespaceText(context.focus),
-        after: visibleWhitespaceText(context.after)
-      };
-    },
-
-    popupTextDiffContextDisplay() {
-      const context = this.popupTextDiffContext();
-      return {
-        ...context,
-        before: visibleWhitespaceText(context.before),
-        focus: visibleWhitespaceText(context.focus),
-        after: visibleWhitespaceText(context.after)
-      };
     },
 
     popupVoteChoices() {
@@ -23498,9 +22561,7 @@ function adjApp() {
               markerClass
             };
           }
-          // Same punctuation attribution as the inline markers (next aligned base char), so a dropped
-          // slot is previewed BEFORE the candidate's punctuation, not after it.
-          const display = getCandidateKwicDisplay(candidate, this.currentSegment, stripChars, true);
+          const display = getCandidateKwicDisplay(candidate, this.currentSegment, stripChars);
           const focusIndex = rawValue ? display.charIndexByBase[index] : -1;
           const beforeBoundary = focusIndex >= 0 ? focusIndex : display.afterBoundary[index];
           const afterBoundary = focusIndex >= 0 ? focusIndex + 1 : display.afterBoundary[index];
@@ -23557,7 +22618,7 @@ function adjApp() {
         return {
           shortcut: String(index + 1),
           model: candidate.model,
-          value: visibleWhitespace(rawValue) || '∅',
+          value: rawValue || '∅',
           markerClass: entry.category === 'majority' && rawValue === entry.dominantValue
             ? 'textdiff-majority'
             : 'textdiff-conflict',
@@ -23813,8 +22874,7 @@ function adjApp() {
         return;
       }
 
-      // Resolved text diffs use their own class; both stay clickable so a choice can be changed again.
-      const textDiffTarget = event.target.closest('.marker-textmismatch, .marker-textmismatch-resolved');
+      const textDiffTarget = event.target.closest('.marker-textmismatch');
       if (textDiffTarget && (textDiffTarget.dataset.textDiffKey != null || textDiffTarget.dataset.textDiffIndex != null)) {
         this.openTextDiffPopup(textDiffTarget.dataset.textDiffKey ?? textDiffTarget.dataset.textDiffIndex, textDiffTarget);
         return;
@@ -23866,8 +22926,7 @@ function adjApp() {
       // FR-026c: auto-open conflict-resolved dialog when last conflict resolved on current segment
       if (resolveHasNext) {
         const statsAfter = this.segmentWorkingPunctuationStats(segmentId);
-        // Not while text diffs remain unresolved: the segment is still pending (#18b).
-        if (statsAfter.conflict === 0 && !this.segmentHasUnresolvedTextDiffs(segmentId)) {
+        if (statsAfter.conflict === 0) {
           this.openConflictResolvedDialog(resolveNextIdx, segmentId);
         }
       }
