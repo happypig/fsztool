@@ -1456,6 +1456,12 @@
       text-shadow: none;
     }
 
+    .adj-popup-textdiff-note {
+      font-size: 0.78rem;
+      color: var(--pico-muted-color);
+      padding: 0 0.5rem 0.35rem;
+    }
+
     .adj-popup-hint {
       padding: 0.6rem 1rem 0.3rem;
       font-size: 0.85rem;
@@ -2456,9 +2462,10 @@
                 </div>
               </div>
               <div class="adj-popup-hint">文字版本參考</div>
+              <div class="adj-popup-textdiff-note" x-text="popupTextDiffEffectNote()"></div>
               <template x-for="vote in popupTextDiffVotes()" :key="vote.model">
                 <button type="button" class="selection-popup-item adj-popup-choice" :class="[vote.rowClass, vote.selected ? 'selected' : '']" @mouseenter="switchPopupKwicVersion(vote.model)" @click="resolveTextDiffVote(vote)">
-                  <span><kbd x-text="vote.shortcut"></kbd> <span x-text="vote.model"></span>: <span class="marker marker-textmismatch" :class="vote.markerClass" style="margin: 0 4px;" x-text="vote.value"></span></span>
+                  <span><kbd x-text="vote.shortcut"></kbd> <span x-text="vote.model"></span>: <span class="marker marker-textmismatch" :class="vote.markerClass" style="margin: 0 4px;" x-text="vote.value"></span> <small class="adj-help" x-show="vote.effectLabel" x-text="vote.effectLabel"></small></span>
                   <span x-show="vote.selected">✓</span>
                 </button>
               </template>
@@ -2626,6 +2633,18 @@
             </template>
           </div>
         </div>
+
+        <template x-if="exportWhitespaceDeletionList().length > 0">
+          <div class="adj-export-whitespace-deletions">
+            <h4>將寫入的空白字元刪除</h4>
+            <p class="adj-help">以下空白字元會從黃金檔與重組後的 XML 中刪除；如需保留，請返回該段修改選擇。</p>
+            <ul>
+              <template x-for="item in exportWhitespaceDeletionList()" :key="item.segmentId + '-' + item.context">
+                <li><button type="button" class="secondary outline" @click="jumpToSegment(item.segmentId)"><span x-text="item.segmentId"></span> ｜ <span x-text="item.charLabel"></span> ｜ <span x-text="item.context"></span></button></li>
+              </template>
+            </ul>
+          </div>
+        </template>
 
         <div class="adj-export-preview-toolbar">
           <h4>匯出前預覽</h4>
@@ -7700,10 +7719,34 @@ function generateFinalText(strippedText, identicalPositions, resolvedPositions, 
   return result;
 }
 
-function validateGoldenText(goldenText, strippedText, stripPunctuationChars, inlineElements) {
+function validateGoldenText(goldenText, strippedText, stripPunctuationChars, inlineElements, deletions = []) {
   const errors = [];
   const strippedGolden = stripPunctuation(goldenText, stripPunctuationChars);
-  const strippedSource = String(strippedText ?? '');
+  let strippedSource = String(strippedText ?? '');
+
+  // spec 010: the golden may omit exactly the whitespace characters it declares. Compare against the
+  // source minus those characters, and shift the positional checks (wrapper / placeholder / inline
+  // element offsets) past them.
+  const declared = Array.isArray(deletions) ? deletions : [];
+  const deletedOffsets = new Set();
+  if (declared.length) {
+    const sourceCodePoints = [...strippedSource];
+    declared.forEach(entry => {
+      const valid = Number.isInteger(entry?.offset)
+        && entry.offset >= 0
+        && entry.offset < sourceCodePoints.length
+        && WHITESPACE_DECISION_CHARS.includes(entry.char)
+        && sourceCodePoints[entry.offset] === entry.char
+        && !deletedOffsets.has(entry.offset);
+      if (valid) {
+        deletedOffsets.add(entry.offset);
+      } else {
+        errors.push({ check: 'whitespace deletion', message: 'declared whitespace deletion does not match stripped_text' });
+      }
+    });
+    strippedSource = sourceCodePoints.filter((_, index) => !deletedOffsets.has(index)).join('');
+  }
+  const shiftOffset = offset => offset - [...deletedOffsets].filter(deleted => deleted < offset).length;
 
   // ⟦⟧ (corner brackets used in stripped_text data) and {} (curly braces used in
   // display-generated golden text via canonicalizeDisplayWrapperBoundaries) are
@@ -7744,7 +7787,7 @@ function validateGoldenText(goldenText, strippedText, stripPunctuationChars, inl
         inlineElement.type === 'wrapped' &&
         typeof inlineElement.offset_in_stripped === 'number'
       ) {
-        const offset = inlineElement.offset_in_stripped;
+        const offset = shiftOffset(inlineElement.offset_in_stripped);
         // offset_in_stripped is a code-point offset; use code-point array.
         // Only assert the inline wrapper boundary when the source text
         // actually has a boundary char at this offset. If it doesn't (data
@@ -7934,6 +7977,100 @@ function getTextDiffValueEntries(entry) {
   return Object.entries(entry.values || {});
 }
 
+// Whitespace text-diff decisions (spec 010). A base text diff whose source character is a single-byte
+// (U+0020) or double-byte (U+3000) space, and whose every reading is "keep it" or "drop it", is decided by
+// the adjudicator and decides the golden text. Every other text diff stays a review mark. The decision
+// store is the existing entry.selected (model name); an empty selected reading means drop.
+const WHITESPACE_DECISION_CHARS = [' ', '\u3000'];
+
+function isWhitespaceDecisionEntry(entry) {
+  if (!entry || entry.kind === 'boundary' || !WHITESPACE_DECISION_CHARS.includes(entry.baseChar)) {
+    return false;
+  }
+  const readings = getTextDiffValueEntries(entry);
+  return readings.length > 0 && readings.every(([, value]) => value === '' || value === entry.baseChar);
+}
+
+// 'keep' | 'drop' | null (not eligible or not decided yet)
+function getWhitespaceDecisionReading(entry) {
+  if (!isWhitespaceDecisionEntry(entry) || entry.selected == null) {
+    return null;
+  }
+  return getTextDiffValue(entry, entry.selected) === '' ? 'drop' : 'keep';
+}
+
+function getEffectiveWhitespaceDeletions(segment) {
+  return [...getSegmentBaseTextDiffMap(segment).entries()]
+    .filter(([, entry]) => getWhitespaceDecisionReading(entry) === 'drop')
+    .map(([index, entry]) => ({ offset: Number(entry.index ?? index), char: entry.baseChar }))
+    .sort((left, right) => left.offset - right.offset);
+}
+
+// Re-align a stored golden text (for example an accepted candidate's) to the current whitespace decisions:
+// drop the declared whitespace characters it still holds and put back the undeclared ones it lacks, right
+// after the previous real character (before any punctuation). Punctuation and every other character are
+// left exactly as they are. Returns the text unchanged when it cannot be aligned to stripped_text.
+function alignGoldenToWhitespaceDecisions(goldenText, strippedText, stripPunctuationChars, deletions) {
+  const golden = [...String(goldenText ?? '')];
+  const stripped = [...String(strippedText ?? '')];
+  const strip = new Set([...String(stripPunctuationChars || '')]);
+  const drop = new Set((deletions || []).map(entry => entry.offset));
+  const real = [];
+  golden.forEach((char, index) => {
+    if (!strip.has(char)) {
+      real.push({ char, index });
+    }
+  });
+
+  const matched = new Array(stripped.length).fill(-1);
+  let cursor = 0;
+  stripped.forEach((char, index) => {
+    if (cursor < real.length
+      && canonicalizeDisplayWrapperBoundaries(real[cursor].char) === canonicalizeDisplayWrapperBoundaries(char)) {
+      matched[index] = real[cursor].index;
+      cursor += 1;
+    }
+  });
+  if (cursor !== real.length) {
+    return String(goldenText ?? '');
+  }
+
+  const removeAt = new Set();
+  const insertAfter = new Map();
+  let previousGoldenIndex = -1;
+  stripped.forEach((char, index) => {
+    const isWhitespace = WHITESPACE_DECISION_CHARS.includes(char);
+    if (matched[index] !== -1) {
+      if (isWhitespace && drop.has(index)) {
+        removeAt.add(matched[index]);
+      } else {
+        previousGoldenIndex = matched[index];
+      }
+      return;
+    }
+    if (isWhitespace && !drop.has(index)) {
+      insertAfter.set(previousGoldenIndex, (insertAfter.get(previousGoldenIndex) || '') + char);
+    }
+  });
+
+  let output = insertAfter.get(-1) || '';
+  golden.forEach((char, index) => {
+    if (!removeAt.has(index)) {
+      output += char;
+    }
+    output += insertAfter.get(index) || '';
+  });
+  return output;
+}
+
+function segmentHasWhitespaceDecisionEntry(segment) {
+  return [...getSegmentBaseTextDiffMap(segment).values()].some(isWhitespaceDecisionEntry);
+}
+
+function whitespaceCharLabel(char) {
+  return char === '\u3000' ? '全形空格' : '半形空格';
+}
+
 // Whitespace-only text-diff values (a dropped/kept space) are invisible in a marker box;
 // show a glyph instead. Display only: stored values stay real whitespace.
 function visibleWhitespace(value) {
@@ -7945,6 +8082,12 @@ function visibleWhitespace(value) {
 // Preview strings (KWIC before/focus/after): U+0020 shown as one glyph, U+3000 as two. Display only.
 function visibleWhitespaceText(text) {
   return typeof text === 'string' ? text.replace(/[ \u3000]/g, ch => (ch === '\u3000' ? '␣␣' : '␣')) : text;
+}
+
+// A text-diff choice only marks the diff as reviewed: the golden always keeps the source text, so markers
+// keep showing what the golden contains and the tooltip carries the choice instead.
+function textDiffReviewedPrefix(entry) {
+  return entry && entry.selected != null ? `已檢視（選擇 ${entry.selected}）— 黃金檔保留原文 | ` : '';
 }
 
 function getTextDiffDisplayValue(entry) {
@@ -8200,7 +8343,10 @@ function buildCurrentInlineDisplaySequence(segment, positionDiff, fractionalInse
     if (boundary < chars.length) {
       const char = chars[boundary];
       const textDiff = textDiffs.get(boundary);
-      const displayChar = textDiff ? (textDiff.baseChar || char) : char;
+      // spec 010: a decided whitespace drop omits the character from the golden/preview text
+      const displayChar = getWhitespaceDecisionReading(textDiff) === 'drop'
+        ? ''
+        : (textDiff ? (textDiff.baseChar || char) : char);
       if (displayChar) {
         charTokenIndexByBase[boundary] = tokens.length;
         tokens.push(displayChar);
@@ -8336,7 +8482,8 @@ function localizeExportValidationCheck(check) {
   const labels = {
     'strip equality': '純文一致',
     'brace preservation': '結構括號保留',
-    'placeholder preservation': '缺字占位保留'
+    'placeholder preservation': '缺字占位保留',
+    'whitespace deletion': '空白刪除宣告'
   };
   return labels[check] || check || '';
 }
@@ -8669,10 +8816,8 @@ function buildInlineViewHtml(segment, positionDiff, fractionalInsertions, insert
     (boundaryTextDiffs.get(boundary) || []).forEach(entry => {
       const isResolved = entry.selected != null;
       const classes = [isResolved ? 'marker-textmismatch-resolved' : 'marker-textmismatch', 'textdiff-boundary', `textdiff-${entry.category}`];
-      const displayValue = isResolved
-        ? (getTextDiffValue(entry, entry.selected) || '∅')
-        : getTextDiffDisplayValue(entry);
-      const title = getTextDiffValueEntries(entry)
+      const displayValue = getTextDiffDisplayValue(entry);
+      const title = textDiffReviewedPrefix(entry) + getTextDiffValueEntries(entry)
         .map(([model, value]) => `${model}: ${value || '∅'}`)
         .join(' | ');
       const isEmpty = displayValue === '∅';
@@ -8699,12 +8844,12 @@ function buildInlineViewHtml(segment, positionDiff, fractionalInsertions, insert
           if (insertionMode) {
             classes.push('char-insertable');
           }
-          const displayChar = isResolved
-            ? (getTextDiffValue(textDiff, textDiff.selected) || '∅')
-            : (textDiff.baseChar || char);
-          const title = getTextDiffValueEntries(textDiff)
+          const decision = getWhitespaceDecisionReading(textDiff);
+          const displayChar = decision === 'drop' ? '∅' : (textDiff.baseChar || char);
+          const effectSuffix = decision === 'drop' ? ' ｜ 黃金檔：刪除' : (decision === 'keep' ? ' ｜ 黃金檔：保留' : '');
+          const title = (decision ? '' : textDiffReviewedPrefix(textDiff)) + getTextDiffValueEntries(textDiff)
             .map(([model, value]) => `${model}: ${visibleWhitespace(value) || '∅'}`)
-            .join(' | ');
+            .join(' | ') + effectSuffix;
       const isEmpty = displayChar === '∅';
       if (isEmpty) classes.push('adj-empty');
       const dataAttr = isEmpty ? ' data-adj-empty=""' : '';
@@ -10539,7 +10684,9 @@ const adjudicationTestSuites = [
 
       const resolvedHtml = app.renderCurrentInlineViewHtml();
       assert.includes(resolvedHtml, 'marker-textmismatch-resolved textdiff-base textdiff-conflict', 'resolved base text diff uses marker-textmismatch-resolved class with textdiff-base kind-class');
-      assert.equal(resolvedHtml.includes('>已<'), true, 'resolved base text diff displays the selected model\'s character value');
+      assert.equal(resolvedHtml.includes('>乙<'), true, 'resolved base text diff keeps showing the source character (the golden keeps it; a choice only marks the diff reviewed)');
+      assert.equal(resolvedHtml.includes('>已<'), false, 'the chosen model\'s character is not shown as if it were applied');
+      assert.equal(resolvedHtml.includes('已檢視（選擇 gemini）'), true, 'the tooltip says the diff was reviewed and which model was chosen');
       assert.equal(resolvedHtml.includes('marker-textmismatch textdiff-base textdiff-conflict'), false, 'resolved base text diff no longer uses unresolved marker class');
     }
   },
@@ -10586,7 +10733,9 @@ const adjudicationTestSuites = [
 
       const resolvedHtml = app.renderCurrentInlineViewHtml();
       assert.includes(resolvedHtml, 'marker-textmismatch-resolved textdiff-boundary textdiff-majority', 'resolved boundary text diff uses marker-textmismatch-resolved class with textdiff-boundary kind-class');
-      assert.equal(resolvedHtml.includes('>丁<'), true, 'resolved boundary text diff displays the selected model\'s character value');
+      assert.equal(resolvedHtml.includes('>丙<'), true, 'resolved boundary text diff keeps showing what the golden contains (the dominant value)');
+      assert.equal(resolvedHtml.includes('>丁<'), false, 'the chosen model\'s value is not shown as if it were applied');
+      assert.equal(resolvedHtml.includes('已檢視（選擇 gemini）'), true, 'the tooltip says the diff was reviewed and which model was chosen');
       assert.equal(resolvedHtml.includes('marker-textmismatch textdiff-boundary textdiff-majority'), false, 'resolved boundary text diff no longer uses unresolved marker class');
     }
   },
@@ -14382,7 +14531,21 @@ const adjudicationTestSuites = [
       app.resolveTextDiffVote({ model: 'gemini' });
       assert.equal(baseDiff.selected, 'gemini', 'the choice can be changed again');
       host.innerHTML = app.renderCurrentInlineViewHtml();
-      assert.equal(host.querySelector('.marker-textmismatch-resolved.textdiff-base').textContent, '∅', 'a base diff resolved to a dropped value shows ∅, not the original character');
+      // spec 010: a whitespace diff is an effective decision, so the marker shows the decision and says what the golden gets
+      assert.equal(host.querySelector('.marker-textmismatch-resolved.textdiff-base').textContent, '∅', 'choosing the model that dropped the space shows ∅: the golden loses the space');
+      assert.equal(host.querySelector('.marker-textmismatch-resolved.textdiff-base').title.includes('黃金檔：刪除'), true, 'the tooltip says the golden will drop it');
+
+      // any other text diff stays a review mark: the marker keeps the source character and the tooltip records the choice
+      const cjkDiff = {
+        key: 'char:5', kind: 'base', index: 5, category: 'conflict', baseChar: '丙', dominantValue: '丙', voteCount: 1,
+        values: new Map([['claude', '丙'], ['gemini', ''], ['gpt', '內']])
+      };
+      const cjkSegment = { id: '004', stripped_text: '所在 其母丙', original_text: '所在 其母丙', inline_elements: [], textDiffs: new Map([[5, cjkDiff]]), boundaryTextDiffs: new Map() };
+      cjkDiff.selected = 'gemini';
+      const cjkHost = document.createElement('div');
+      cjkHost.innerHTML = buildInlineViewHtml(cjkSegment, createEmptyPositionDiff(), new Map(), false);
+      assert.equal(cjkHost.querySelector('.marker-textmismatch-resolved.textdiff-base').textContent, '丙', 'a real-character diff keeps the source character after choosing the empty reading');
+      assert.equal(cjkHost.querySelector('.marker-textmismatch-resolved.textdiff-base').title.includes('已檢視（選擇 gemini）'), true, 'and the tooltip records the choice as reviewed');
 
       // boundary text diffs resolved earlier are reopenable the same way
       const boundaryTarget = document.createElement('span');
@@ -14393,6 +14556,470 @@ const adjudicationTestSuites = [
       app.openTextDiffPopup = (key, element) => { opened.push(key); };
       app.handleMarkerClick({ target: boundaryInner });
       assert.equal(opened[opened.length - 1], 'boundary:1:0', 'clicking a RESOLVED boundary text diff opens its popup');
+    }
+  },
+  {
+    name: 'T020a-T-BDD a text-diff choice never changes the golden text: the preview and export text are identical whichever model (or ∅) is chosen, for base and boundary diffs',
+    fn(assert) {
+      const app = adjApp();
+      // a REAL character (not a space): whitespace diffs are effective decisions since spec 010 (tests T030*)
+      const baseDiff = {
+        key: 'char:1', kind: 'base', index: 1, category: 'majority', baseChar: '在', dominantValue: '在', voteCount: 2,
+        values: new Map([['claude', '在'], ['gemini', ''], ['gpt', '在']])
+      };
+      const boundaryDiff = {
+        key: 'boundary:5:0', kind: 'boundary', basePosition: 5, slotIndex: 0, category: 'majority', dominantValue: '·', voteCount: 2,
+        values: new Map([['claude', '·'], ['gemini', '·'], ['gpt', '']])
+      };
+      app.job = { stripPunctuationChars: '，。', candidatesBySegment: { '003': [{ model: 'claude' }, { model: 'gemini' }, { model: 'gpt' }] } };
+      app.segments = [{
+        id: '003', stripped_text: '所在 其母', original_text: '所在 其母', inline_elements: [],
+        textDiffs: new Map([[1, baseDiff]]), boundaryTextDiffs: new Map([['boundary:5:0', boundaryDiff]])
+      }];
+      app.originalDiffs = { '003': createEmptyPositionDiff() };
+      app.positionMaps = { '003': createEmptyPositionDiff() };
+      app.fractionalInsertions = { '003': new Map() };
+
+      const unresolved = app.currentPreviewTextForSegment('003');
+      assert.equal(unresolved.includes('所在 其母'), true, 'the preview keeps the source space');
+      ['claude', 'gemini', 'gpt'].forEach(model => {
+        baseDiff.selected = model;
+        boundaryDiff.selected = model;
+        assert.equal(app.currentPreviewTextForSegment('003'), unresolved, `choosing ${model} leaves the golden text unchanged`);
+      });
+      baseDiff.selected = 'gemini';
+      assert.equal(app.currentPreviewTextForSegment('003').includes('所在 其母'), true, 'choosing ∅ (gemini dropped the character) does not remove it from the golden text');
+    }
+  },
+  {
+    name: 'T020b-T-BDD the text-diff popup tells the adjudicator what a choice does: a review mark keeps the source text, a whitespace choice decides the golden',
+    fn(assert) {
+      const markup = [...document.querySelectorAll('template')]
+        .map(template => template.innerHTML)
+        .find(content => content.includes('popupTextDiffVotes()')) ?? '';
+      assert.equal(markup.length > 0, true, 'the text-diff popup markup is present');
+      assert.equal(markup.includes('adj-popup-textdiff-note'), true, 'the popup carries a note element');
+      assert.equal(markup.includes('x-text="popupTextDiffEffectNote()"'), true, 'whose text depends on the kind of diff');
+
+      const app = adjApp();
+      const cjk = { key: 'char:1', kind: 'base', index: 1, category: 'conflict', baseChar: '在', dominantValue: '在', voteCount: 1, values: new Map([['claude', '在'], ['gemini', '']]) };
+      const ws = { key: 'char:2', kind: 'base', index: 2, category: 'majority', baseChar: ' ', dominantValue: ' ', voteCount: 2, values: new Map([['claude', ' '], ['gemini', '']]) };
+      app.job = { candidatesBySegment: { '003': [{ model: 'claude' }, { model: 'gemini' }] } };
+      app.segments = [{ id: '003', stripped_text: '所在 其母', original_text: '所在 其母', inline_elements: [], textDiffs: new Map([[1, cjk], [2, ws]]), boundaryTextDiffs: new Map() }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.popupTextDiffIndex = 'char:1';
+      const reviewNote = app.popupTextDiffEffectNote();
+      assert.equal(reviewNote.includes('黃金檔保留原文'), true, 'a real-character diff: the note says the golden keeps the source text');
+      assert.equal(reviewNote.includes('僅標示已檢視'), true, 'and that the choice only marks the diff as reviewed');
+      app.popupTextDiffIndex = 'char:2';
+      const whitespaceNote = app.popupTextDiffEffectNote();
+      assert.equal(whitespaceNote.includes('保留原文'), false, 'a whitespace diff never claims the golden keeps the source text');
+      assert.equal(whitespaceNote.includes('決定黃金檔'), true, 'it says the choice decides the golden');
+    }
+  },
+  {
+    name: 'T030a-T-UNIT whitespace decisions: only a U+0020/U+3000 base text diff whose readings are keep or drop is eligible; a chosen drop is a declared deletion',
+    fn(assert) {
+      const diff = (index, char, values, extra = {}) => ({
+        key: `char:${index}`, kind: 'base', index, category: 'majority', baseChar: char, dominantValue: char, voteCount: 2,
+        values: new Map(values), ...extra
+      });
+      const single = diff(2, ' ', [['claude', ' '], ['gemini', ''], ['gpt', ' ']]);
+      const double = diff(5, '　', [['claude', '　'], ['gemini', ''], ['gpt', '　']]);
+      assert.equal(isWhitespaceDecisionEntry(single), true, 'single-byte space with keep/drop readings is eligible');
+      assert.equal(isWhitespaceDecisionEntry(double), true, 'double-byte space with keep/drop readings is eligible');
+      assert.equal(isWhitespaceDecisionEntry(diff(2, ' ', [['claude', ' '], ['gemini', '　']])), false, 'a different whitespace reading is not a keep/drop decision');
+      assert.equal(isWhitespaceDecisionEntry(diff(2, '乙', [['claude', '乙'], ['gemini', '']])), false, 'a CJK character is never eligible');
+      assert.equal(isWhitespaceDecisionEntry(diff(2, ' ', [['claude', ' '], ['gemini', 'x']])), false, 'a non-whitespace reading makes the diff ineligible');
+      assert.equal(isWhitespaceDecisionEntry({ ...single, kind: 'boundary' }), false, 'boundary (inserted text) diffs are out of scope');
+      assert.equal(isWhitespaceDecisionEntry(null), false, 'null is not eligible');
+
+      const segment = { id: '003', stripped_text: '甲乙 丙丁　戊', textDiffs: new Map([[2, single], [5, double]]), boundaryTextDiffs: new Map() };
+      assert.deepEqual(getEffectiveWhitespaceDeletions(segment), [], 'unresolved diffs declare nothing');
+      single.selected = 'claude';
+      assert.deepEqual(getEffectiveWhitespaceDeletions(segment), [], 'a keep decision declares nothing');
+      single.selected = 'gemini';
+      double.selected = 'gemini';
+      assert.deepEqual(getEffectiveWhitespaceDeletions(segment), [{ offset: 2, char: ' ' }, { offset: 5, char: '　' }], 'drop decisions are declared, sorted by offset, with their character');
+    }
+  },
+  {
+    name: 'T030b-T-BDD the golden/preview text follows a whitespace decision (drop omits the character, keep and unresolved keep it); a CJK diff choice changes nothing',
+    fn(assert) {
+      const ws = () => ({
+        key: 'char:2', kind: 'base', index: 2, category: 'majority', baseChar: ' ', dominantValue: ' ', voteCount: 2,
+        values: new Map([['claude', ' '], ['gemini', ''], ['gpt', ' ']])
+      });
+      const segment = diff => ({ id: '003', stripped_text: '所在 其母', original_text: '所在 其母', inline_elements: [], textDiffs: new Map([[2, diff]]), boundaryTextDiffs: new Map() });
+      const text = diff => buildCurrentInlinePreviewText(segment(diff), createEmptyPositionDiff(), new Map());
+      const unresolved = ws();
+      assert.equal(text(unresolved), '所在 其母', 'unresolved keeps the source space');
+      const keep = ws(); keep.selected = 'claude';
+      assert.equal(text(keep), '所在 其母', 'keep reading keeps the space');
+      const drop = ws(); drop.selected = 'gemini';
+      assert.equal(text(drop), '所在其母', 'drop reading removes exactly the space');
+
+      const cjk = { key: 'char:1', kind: 'base', index: 1, category: 'conflict', baseChar: '乙', dominantValue: '乙', voteCount: 1, values: new Map([['claude', '乙'], ['gemini', '已'], ['gpt', '']]) };
+      const cjkSegment = { id: '004', stripped_text: '甲乙丙', original_text: '甲乙丙', inline_elements: [], textDiffs: new Map([[1, cjk]]), boundaryTextDiffs: new Map() };
+      cjk.selected = 'gpt';
+      assert.equal(buildCurrentInlinePreviewText(cjkSegment, createEmptyPositionDiff(), new Map()), '甲乙丙', 'an empty reading on a real character is still only a review mark');
+      cjk.selected = 'gemini';
+      assert.equal(buildCurrentInlinePreviewText(cjkSegment, createEmptyPositionDiff(), new Map()), '甲乙丙', 'a different character reading is still only a review mark');
+    }
+  },
+  {
+    name: 'T030c-T-BDD changing a whitespace choice on an already edited segment recomputes its stored golden text',
+    fn(assert) {
+      const app = adjApp();
+      const diff = {
+        key: 'char:2', kind: 'base', index: 2, category: 'majority', baseChar: ' ', dominantValue: ' ', voteCount: 2,
+        values: new Map([['claude', ' '], ['gemini', ''], ['gpt', ' ']])
+      };
+      app.job = { candidatesBySegment: { '003': [{ model: 'claude' }, { model: 'gemini' }, { model: 'gpt' }] }, stripPunctuationChars: '，。' };
+      app.segments = [{ id: '003', stripped_text: '所在 其母', original_text: '所在 其母', inline_elements: [], textDiffs: new Map([[2, diff]]), boundaryTextDiffs: new Map() }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.originalDiffs = { '003': createEmptyPositionDiff() };
+      app.positionMaps = { '003': createEmptyPositionDiff() };
+      app.fractionalInsertions = { '003': new Map() };
+      app.adjudications = { '003': { status: 'edited', goldenText: '所在 其母', sourceModel: 'manual', edited: true } };
+      app.debouncedSaveSession = () => {};
+
+      app.ResolveTextDiff('003', 'char:2', 'gemini');
+      assert.equal(app.getAdjudicationState('003').goldenText, '所在其母', 'choosing the drop reading updates the stored golden text');
+      app.ResolveTextDiff('003', 'char:2', 'claude');
+      assert.equal(app.getAdjudicationState('003').goldenText, '所在 其母', 'changing back restores the space');
+    }
+  },
+  {
+    name: 'T030d-T-UNIT the export gate accepts exactly the declared whitespace deletions: same shifted wrapper/placeholder checks, anything else still refused',
+    fn(assert) {
+      const del = [{ offset: 2, char: ' ' }];
+      assert.equal(validateGoldenText('所在其母', '所在 其母', '，。', [], del).valid, true, 'the declared deletion is accepted');
+      assert.equal(validateGoldenText('所在其母', '所在 其母', '，。', []).valid, false, 'the same text without a declaration is still refused');
+      assert.equal(validateGoldenText('所在其', '所在 其母', '，。', [], del).valid, false, 'a further missing character is refused');
+      assert.equal(validateGoldenText('所在 其母', '所在 其母', '，。', [], del).valid, false, 'a declared deletion that is not applied is refused');
+      assert.equal(validateGoldenText('所在其母', '所在 其母', '，。', [], [{ offset: 2, char: '　' }]).valid, false, 'a declaration whose character does not match the source is refused');
+      assert.equal(validateGoldenText('所在其母', '所在 其母', '，。', [], [{ offset: 9, char: ' ' }]).valid, false, 'an out-of-range declaration is refused');
+      assert.equal(validateGoldenText('所，在其。母', '所在 其母', '，。', [], del).valid, true, 'punctuation is still free');
+
+      // wrapper and placeholder checks are positional: they must follow the shift
+      assert.equal(validateGoldenText('甲⟦乙⟧■', '甲 ⟦乙⟧■', '，。', [{ type: 'wrapped', offset_in_stripped: 2 }], [{ offset: 1, char: ' ' }]).valid, true, 'wrapper and placeholder after the deleted space still validate');
+      assert.equal(validateGoldenText('甲乙■', '甲 ⟦乙⟧■', '，。', [{ type: 'wrapped', offset_in_stripped: 2 }], [{ offset: 1, char: ' ' }]).errors.some(error => error.check === 'brace preservation'), true, 'a missing wrapper after the deleted space is still caught');
+      assert.equal(validateGoldenText('甲⟦乙⟧', '甲 ⟦乙⟧■', '，。', [], [{ offset: 1, char: ' ' }]).errors.some(error => error.check === 'placeholder preservation'), true, 'a missing placeholder after the deleted space is still caught');
+    }
+  },
+  {
+    name: 'T030e-T-BDD export records carry whitespace_deletions only where a drop was chosen, and ExportGolden validates the text it exports',
+    async fn(assert) {
+      const app = adjApp();
+      const diff = {
+        key: 'char:2', kind: 'base', index: 2, category: 'majority', baseChar: ' ', dominantValue: ' ', voteCount: 2,
+        values: new Map([['claude', ' '], ['gemini', ''], ['gpt', ' ']])
+      };
+      app.job = { schemaVersion: '2', sourceMarkers: 'y066_02_markers.json', stripPunctuationChars: '，。', candidatesBySegment: { '003': [{ model: 'claude' }, { model: 'gemini' }, { model: 'gpt' }], '004': [{ model: 'claude' }] } };
+      app.segments = [
+        { id: '003', stripped_text: '所在 其母', original_text: '所在 其母', inline_elements: [], textDiffs: new Map([[2, diff]]), boundaryTextDiffs: new Map() },
+        { id: '004', stripped_text: '甲乙', original_text: '甲乙', inline_elements: [], textDiffs: new Map(), boundaryTextDiffs: new Map() }
+      ];
+      app.filter = 'all';
+      app.originalDiffs = { '003': createEmptyPositionDiff(), '004': createEmptyPositionDiff() };
+      app.positionMaps = { '003': createEmptyPositionDiff(), '004': createEmptyPositionDiff() };
+      app.fractionalInsertions = { '003': new Map(), '004': new Map() };
+      app.adjudications = {
+        '003': { status: 'edited', goldenText: '所在 其母', sourceModel: 'manual', edited: true },
+        '004': { status: 'accepted', goldenText: '甲，乙', sourceModel: 'claude', edited: false }
+      };
+      app.debouncedSaveSession = () => {};
+      app.clearSavedSession = () => {};
+      app.triggerJsonDownload = () => {};
+
+      let records = app.buildExportRecords();
+      assert.deepEqual(Object.keys(records[0]), ['id', 'golden_text', 'edited', 'status'], 'no decision: the record has exactly today\'s keys');
+      assert.deepEqual(Object.keys(records[1]), ['id', 'golden_text', 'edited', 'status'], 'a segment without whitespace diffs is unchanged');
+
+      app.ResolveTextDiff('003', 'char:2', 'gemini');
+      records = app.buildExportRecords();
+      assert.equal(records[0].golden_text, '所在其母', 'the drop is in the exported text');
+      assert.deepEqual(records[0].whitespace_deletions, [{ offset: 2, char: ' ' }], 'and declared');
+      assert.equal('whitespace_deletions' in records[1], false, 'other segments carry no field');
+      assert.equal(records[0].status, 'done', 'status is unchanged');
+
+      await app.ExportGolden(false, true);
+      assert.equal(app.exportErrors.length, 0, 'the gate accepts the declared deletion');
+
+      // corrupt the stored text so it drops another character: the gate must refuse it
+      app.adjudications = { ...app.adjudications, '004': { status: 'accepted', goldenText: '甲', sourceModel: 'claude', edited: false } };
+      await app.ExportGolden(false, true);
+      assert.equal(app.exportErrors.some(error => error.segmentId === '004'), true, 'a non-whitespace loss is still refused');
+    }
+  },
+  {
+    name: 'T030f-T-BDD accepting a candidate wholesale chooses that candidate\'s reading for every eligible whitespace diff, so its text and the declaration agree',
+    async fn(assert) {
+      const app = adjApp();
+      const diff = {
+        key: 'char:2', kind: 'base', index: 2, category: 'majority', baseChar: ' ', dominantValue: ' ', voteCount: 2,
+        values: new Map([['claude', ' '], ['gemini', ''], ['gpt', ' ']])
+      };
+      app.job = { schemaVersion: '2', sourceMarkers: 'y066_02_markers.json', stripPunctuationChars: '，。', candidatesBySegment: {
+        '003': [
+          { model: 'claude', repunctuatedText: '所在 。其母' },
+          { model: 'gemini', repunctuatedText: '所在。其母' },
+          { model: 'gpt', repunctuatedText: '所在 其母' }
+        ]
+      } };
+      app.segments = [{ id: '003', stripped_text: '所在 其母', original_text: '所在 。其母', inline_elements: [], textDiffs: new Map([[2, diff]]), boundaryTextDiffs: new Map() }];
+      app.filter = 'all';
+      app.originalDiffs = { '003': createEmptyPositionDiff() };
+      app.positionMaps = {};
+      app.fractionalInsertions = {};
+      app.adjudications = { '003': { status: 'unreviewed', goldenText: null, sourceModel: null, edited: false } };
+      app.debouncedSaveSession = () => {};
+
+      app.AcceptCandidate('003', 'gemini');
+      assert.equal(diff.selected, 'gemini', 'accepting gemini chooses gemini\'s reading for the whitespace diff');
+      const record = app.buildExportRecords()[0];
+      assert.equal(record.golden_text, '所在。其母', 'the accepted text lacks the space');
+      assert.deepEqual(record.whitespace_deletions, [{ offset: 2, char: ' ' }], 'and the deletion is declared');
+      await app.ExportGolden(false, true);
+      assert.equal(app.exportErrors.length, 0, 'the gate accepts it');
+
+      app.AcceptCandidate('003', 'claude');
+      assert.equal(diff.selected, 'claude', 'accepting claude switches the decision');
+      assert.equal('whitespace_deletions' in app.buildExportRecords()[0], false, 'and the declaration disappears');
+    }
+  },
+  {
+    name: 'T030g-T-INTEGRATION a restored session that holds an earlier whitespace selection exports it, lists it, and an unresolved diff exports as before',
+    async fn(assert) {
+      localStorage.removeItem('fosizhi-adj-session');
+      const markers = createAdjudicationJsonTestFile('y066_02_markers.json', {
+        schema_version: '2', source_file: 'y066_02.xml', strip_punctuation_chars: '，。',
+        segments: [{ id: '003', tier: 1, stripped_text: '所在 其母', original_text: '所在 。其母', inline_elements: [] }]
+      });
+      const candidate = (model, text) => createAdjudicationJsonTestFile(`y066_02_repunctuated_${model}.json`, {
+        schema_version: '2', source_markers: 'y066_02_markers.json', model,
+        segments: [{ id: '003', repunctuated_text: text }]
+      });
+      const app = adjApp();
+      app.markersFile = markers;
+      await app.LoadJob(markers, [candidate('claude', '所在 。其母'), candidate('gemini', '所在。其母'), candidate('gpt', '所在 其母')]);
+      const diff = [...getSegmentBaseTextDiffMap(app.segments[0]).values()][0];
+      assert.equal(diff !== undefined && isWhitespaceDecisionEntry(diff), true, 'fixture: the loaded segment has an eligible whitespace diff');
+
+      // an old session: the diff was selected (review mark) and the segment committed with the space kept
+      diff.selected = 'gemini';
+      app.adjudications = { '003': { status: 'edited', goldenText: '所在 。其母', sourceModel: 'manual', edited: true } };
+      app.saveSession();
+      const saved = JSON.parse(localStorage.getItem('fosizhi-adj-session'));
+      localStorage.removeItem('fosizhi-adj-session');
+
+      const restored = adjApp();
+      restored.restoreSession(saved);
+      const record = restored.buildExportRecords()[0];
+      assert.equal(record.golden_text.includes(' '), false, 'the stale stored text does not win over the decision');
+      assert.deepEqual(record.whitespace_deletions, [{ offset: 2, char: ' ' }], 'the decision is declared');
+      const listed = restored.exportWhitespaceDeletionList();
+      assert.equal(listed.length, 1, 'the export screen lists the deletion');
+      assert.equal(listed[0].segmentId, '003', 'with its segment');
+      assert.equal(listed[0].context.includes('[␣]'), true, 'and the character in context');
+
+      const untouched = adjApp();
+      untouched.restoreSession(JSON.parse(JSON.stringify(saved)));
+      const again = [...getSegmentBaseTextDiffMap(untouched.segments[0]).values()][0];
+      again.selected = undefined;
+      assert.equal('whitespace_deletions' in untouched.buildExportRecords()[0], false, 'an unresolved diff exports without a declaration');
+    }
+  },
+  {
+    name: 'T030h-T-BDD the popup, the marker tooltip and the export screen state what will be written',
+    fn(assert) {
+      const app = adjApp();
+      const ws = {
+        key: 'char:2', kind: 'base', index: 2, category: 'majority', baseChar: ' ', dominantValue: ' ', voteCount: 2,
+        values: new Map([['claude', ' '], ['gemini', ''], ['gpt', ' ']])
+      };
+      const cjk = { key: 'char:5', kind: 'base', index: 5, category: 'conflict', baseChar: '丙', dominantValue: '丙', voteCount: 1, values: new Map([['claude', '丙'], ['gemini', '內'], ['gpt', '丙']]) };
+      const segment = { id: '003', stripped_text: '所在 其母丙', original_text: '所在 其母丙', inline_elements: [], textDiffs: new Map([[2, ws], [5, cjk]]), boundaryTextDiffs: new Map() };
+      app.job = { candidatesBySegment: { '003': [{ model: 'claude' }, { model: 'gemini' }, { model: 'gpt' }] }, stripPunctuationChars: '，。' };
+      app.segments = [segment];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.adjudications = { '003': { status: 'edited', goldenText: '所在 其母丙', sourceModel: 'manual', edited: true } };
+
+      app.popupTextDiffIndex = 'char:2';
+      assert.deepEqual(app.popupTextDiffVotes().map(vote => vote.effectLabel), ['寫入：保留', '寫入：刪除', '寫入：保留'], 'each reading of a whitespace diff says what the golden will contain');
+      assert.equal(app.popupTextDiffEffectNote().includes('黃金檔'), true, 'the popup explains the effect');
+      app.popupTextDiffIndex = 'char:5';
+      assert.deepEqual(app.popupTextDiffVotes().map(vote => vote.effectLabel), ['', '', ''], 'a real-character diff shows no write effect');
+      assert.equal(app.popupTextDiffEffectNote().includes('保留原文'), true, 'and says the golden keeps the source text');
+
+      ws.selected = 'gemini';
+      const html = buildInlineViewHtml(segment, createEmptyPositionDiff(), new Map(), false);
+      assert.equal(html.includes('黃金檔：刪除'), true, 'the resolved marker tooltip says the character will be removed');
+      ws.selected = 'claude';
+      assert.equal(buildInlineViewHtml(segment, createEmptyPositionDiff(), new Map(), false).includes('黃金檔：保留'), true, 'or kept');
+
+      ws.selected = 'gemini';
+      const list = app.exportWhitespaceDeletionList();
+      assert.equal(list.length, 1, 'one deletion is listed');
+      assert.equal(list[0].charLabel, '半形空格', 'with its kind');
+      assert.equal(list[0].context, '所在[␣]其母丙', 'and context');
+
+      const markup = [...document.querySelectorAll('template')].map(template => template.innerHTML).join('');
+      assert.equal(markup.includes('vote.effectLabel'), true, 'popup rows render the effect label');
+      assert.equal(markup.includes('popupTextDiffEffectNote()'), true, 'the popup renders the note');
+      assert.equal(markup.includes('exportWhitespaceDeletionList()'), true, 'the export screen renders the deletion list');
+    }
+  },
+  {
+    name: 'T030i-T-UNIT aligning a stored golden text to whitespace decisions: drops and re-inserts exactly the declared characters, keeps punctuation where it is',
+    fn(assert) {
+      const align = (golden, stripped, deletions) => alignGoldenToWhitespaceDecisions(golden, stripped, '，。', deletions);
+      assert.equal(align('所在。其母', '所在 其母', []), '所在 。其母', 'keep: the space returns right after the previous character, before the punctuation');
+      assert.equal(align('所在 。其母', '所在 其母', [{ offset: 2, char: ' ' }]), '所在。其母', 'drop: only the space goes, the punctuation stays');
+      assert.equal(align('所在 。其母', '所在 其母', []), '所在 。其母', 'already aligned: unchanged');
+      assert.equal(align('所在。其母', '所在 其母', [{ offset: 2, char: ' ' }]), '所在。其母', 'already dropped: unchanged');
+      assert.equal(align('甲乙丙', '甲 乙　丙', []), '甲 乙　丙', 'two whitespace characters are both re-inserted in order');
+      assert.equal(align('甲 乙　丙', '甲 乙　丙', [{ offset: 1, char: ' ' }, { offset: 3, char: '　' }]), '甲乙丙', 'and both dropped');
+      assert.equal(align('甲，乙。丙', '甲 乙　丙', [{ offset: 3, char: '　' }]), '甲 ，乙。丙', 'only the undeclared one is restored, punctuation untouched');
+    }
+  },
+  {
+    name: 'T030j-T-BDD changing the whitespace choice after accepting a candidate wholesale re-aligns the accepted text (the segment becomes edited) and the export gate still passes',
+    async fn(assert) {
+      const app = adjApp();
+      const diff = {
+        key: 'char:2', kind: 'base', index: 2, category: 'majority', baseChar: ' ', dominantValue: ' ', voteCount: 2,
+        values: new Map([['claude', ' '], ['gemini', ''], ['gpt', ' ']])
+      };
+      app.job = { schemaVersion: '2', sourceMarkers: 'y066_02_markers.json', stripPunctuationChars: '，。', candidatesBySegment: {
+        '003': [
+          { model: 'claude', repunctuatedText: '所在 。其母' },
+          { model: 'gemini', repunctuatedText: '所在。其母' },
+          { model: 'gpt', repunctuatedText: '所在 其母' }
+        ]
+      } };
+      app.segments = [{ id: '003', stripped_text: '所在 其母', original_text: '所在 。其母', inline_elements: [], textDiffs: new Map([[2, diff]]), boundaryTextDiffs: new Map() }];
+      app.filter = 'all';
+      app.originalDiffs = { '003': createEmptyPositionDiff() };
+      app.positionMaps = {};
+      app.fractionalInsertions = {};
+      app.adjudications = { '003': { status: 'unreviewed', goldenText: null, sourceModel: null, edited: false } };
+      app.debouncedSaveSession = () => {};
+      app.clearSavedSession = () => {};
+
+      app.AcceptCandidate('003', 'gemini');
+      assert.equal(app.getAdjudicationState('003').goldenText, '所在。其母', 'fixture: gemini accepted, space dropped');
+
+      app.ResolveTextDiff('003', 'char:2', 'claude');
+      const state = app.getAdjudicationState('003');
+      assert.equal(state.goldenText, '所在 。其母', 'the space is back, the accepted punctuation is kept');
+      assert.equal(state.status, 'edited', 'the segment is now an adjudicator edit of the accepted text');
+      assert.equal('whitespace_deletions' in app.buildExportRecords()[0], false, 'no deletion is declared any more');
+      await app.ExportGolden(false, true);
+      assert.equal(app.exportErrors.length, 0, 'the export gate passes');
+
+      app.ResolveTextDiff('003', 'char:2', 'gemini');
+      assert.equal(app.getAdjudicationState('003').goldenText, '所在。其母', 'and dropping again removes it');
+      assert.deepEqual(app.buildExportRecords()[0].whitespace_deletions, [{ offset: 2, char: ' ' }], 'with the deletion declared');
+      await app.ExportGolden(false, true);
+      assert.equal(app.exportErrors.length, 0, 'the gate passes again');
+    }
+  },
+  {
+    name: 'T019a-T-UNIT golden export filename is <stem>_golden.json: from the loaded markers file, else from the restored job (sourceMarkers, then sourceFile); the stemless name is only the last resort',
+    fn(assert) {
+      const app = adjApp();
+
+      app.markersFile = { name: 'y066_02_markers.json' };
+      assert.equal(app.deriveExportFilename(), 'y066_02_golden.json', 'loaded markers file y066_02_markers.json -> y066_02_golden.json');
+      app.markersFile = { name: 'y066_back_markers.json' };
+      assert.equal(app.deriveExportFilename(), 'y066_back_golden.json', 'a non-numeric stem (y066_back) is kept as is');
+      app.markersFile = { name: 'y005_04-2_markers.json' };
+      assert.equal(app.deriveExportFilename(), 'y005_04-2_golden.json', 'a hyphenated stem (y005_04-2) is kept as is');
+
+      // restored session: no markers file, the job still knows its markers and source names
+      app.markersFile = null;
+      app.job = { sourceMarkers: 'y066_02_markers.json', sourceFile: 'y066_02.xml' };
+      assert.equal(app.deriveExportFilename(), 'y066_02_golden.json', 'restored job: sourceMarkers gives the stem');
+      app.job = { sourceMarkers: '/candidate/input/y066_back_markers.json', sourceFile: 'y066_back.xml' };
+      assert.equal(app.deriveExportFilename(), 'y066_back_golden.json', 'a path in sourceMarkers is reduced to its file name');
+      app.job = { sourceMarkers: 'D:\\batch\\y035_08_markers.json' };
+      assert.equal(app.deriveExportFilename(), 'y035_08_golden.json', 'Windows separators are handled too');
+      app.job = { sourceMarkers: '', sourceFile: 'y001/y001_01.xml' };
+      assert.equal(app.deriveExportFilename(), 'y001_01_golden.json', 'without sourceMarkers the XML name gives the stem');
+
+      // a markers file whose name does not end in _markers.json must not make the golden overwrite it
+      app.markersFile = { name: 'abc.json' };
+      app.job = { sourceMarkers: 'y066_02_markers.json' };
+      assert.equal(app.deriveExportFilename(), 'y066_02_golden.json', 'an unrecognised markers file name falls through to the job');
+      app.markersFile = { name: 'abc.json' };
+      app.job = null;
+      assert.equal(app.deriveExportFilename(), 'adjudication_golden.json', 'nothing usable anywhere -> the stemless fallback');
+      app.markersFile = null;
+      assert.equal(app.deriveExportFilename(), 'adjudication_golden.json', 'nothing loaded -> the stemless fallback');
+    }
+  },
+  {
+    name: 'T019b-T-INTEGRATION a restored session exports <stem>_golden.json, not adjudication_golden.json (saved draft and localStorage resume)',
+    async fn(assert) {
+      localStorage.removeItem('fosizhi-adj-session');
+      const markers = createAdjudicationJsonTestFile('y066_02_markers.json', {
+        schema_version: '2',
+        source_file: 'y066_02.xml',
+        strip_punctuation_chars: '，。',
+        segments: [{ id: '001', tier: 1, stripped_text: '甲乙', original_text: '甲乙', inline_elements: [] }]
+      });
+      const candidate = (model, text) => createAdjudicationJsonTestFile(`y066_02_repunctuated_${model}.json`, {
+        schema_version: '2', source_markers: 'y066_02_markers.json', model,
+        segments: [{ id: '001', repunctuated_text: text }]
+      });
+      const app = adjApp();
+      app.markersFile = markers; // what handleMarkersSelection() does before 開始裁決
+      await app.LoadJob(markers, [candidate('claude', '甲，乙'), candidate('gemini', '甲。乙'), candidate('gpt', '甲，乙')]);
+      assert.equal(app.exportFilenameLabel(), 'y066_02_golden.json', 'a freshly loaded job already exports <stem>_golden.json');
+      app.saveSession();
+      const saved = JSON.parse(localStorage.getItem('fosizhi-adj-session'));
+
+      const restored = adjApp();
+      restored.restoreSession(saved);
+      assert.equal(restored.markersFile, null, 'fixture: a restored session has no markers file');
+      assert.equal(restored.exportFilenameLabel(), 'y066_02_golden.json', 'the restored session names its golden after the job');
+      localStorage.removeItem('fosizhi-adj-session');
+    }
+  },
+  {
+    name: 'T019c-T-INTEGRATION restoring another job after a reset never reuses the previous job export name',
+    async fn(assert) {
+      localStorage.removeItem('fosizhi-adj-session');
+      const load = async (stem) => {
+        const app = adjApp();
+        const markers = createAdjudicationJsonTestFile(`${stem}_markers.json`, {
+          schema_version: '2', source_file: `${stem}.xml`, strip_punctuation_chars: '，。',
+          segments: [{ id: '001', tier: 1, stripped_text: '甲乙', original_text: '甲乙', inline_elements: [] }]
+        });
+        const candidate = (model, text) => createAdjudicationJsonTestFile(`${stem}_repunctuated_${model}.json`, {
+          schema_version: '2', source_markers: `${stem}_markers.json`, model,
+          segments: [{ id: '001', repunctuated_text: text }]
+        });
+        app.markersFile = markers; // what handleMarkersSelection() does before 開始裁決
+        await app.LoadJob(markers, [candidate('claude', '甲，乙'), candidate('gemini', '甲。乙'), candidate('gpt', '甲，乙')]);
+        return app;
+      };
+      const other = await load('y066_back');
+      other.saveSession();
+      const saved = JSON.parse(localStorage.getItem('fosizhi-adj-session'));
+      localStorage.removeItem('fosizhi-adj-session');
+
+      const app = await load('y001_01');
+      assert.equal(app.exportFilenameLabel(), 'y001_01_golden.json', 'fixture: job A is loaded');
+      app.resetToLoad();
+      assert.equal(app.exportFilename, '', 'reset forgets the previous export name');
+      app.restoreSession(saved);
+      assert.equal(app.exportFilenameLabel(), 'y066_back_golden.json', 'the restored job B exports its own name (y066_back), not job A\'s');
     }
   },
   {
@@ -20481,13 +21108,38 @@ function getReleaseNotesHtml() {
       <h3>📦 版本 V1 (003-adjudication-editor) — 裁決編輯器</h3>
       <p><strong>發布日期：</strong>2026-06</p>
 
+      <h4>功能新增（2026-10-08）— 空白字元的文字差異裁決會寫入黃金檔（Feature 010）</h4>
+      <ul>
+        <li>原文為半形空格（U+0020）或全形空格（U+3000，含以 <code>&lt;caesura/&gt;</code> 代替空格者）、且各模型只在「保留／刪除」之間不同的文字差異，選擇後會真正決定黃金檔：選擇「∅」＝刪除該空白字元，選擇有空格的模型＝保留</li>
+        <li>標記提示與選單各選項會標示「黃金檔：保留／刪除」；其他文字差異（中文字、符號）仍只是檢視標記，黃金檔保留原文，選單內有說明</li>
+        <li>已裁決的差異可再次點選修改；整段接受某模型時，視為採用該模型對本段所有空白差異的選擇</li>
+        <li>匯出時，黃金檔會以 <code>whitespace_deletions</code> 明確記錄被刪除的空白字元（位置與字元），匯出畫面並列出所有將刪除的空白供確認；沒有刪除時黃金檔與先前完全相同</li>
+        <li>舊進度（草稿／自動儲存）中先前對空白差異所做的選擇會依其意圖生效，並列於匯出畫面</li>
+        <li><strong>注意</strong>：重組後的 XML 需使用支援 <code>whitespace_deletions</code> 的 FSZInspector 版本；在此之前，含刪除的黃金檔段落會被重組步驟明確略過，不會寫入錯誤內容</li>
+      </ul>
+
+      <h4>Hotfix（2026-10-08）— 文字差異的選擇只標示「已檢視」，標記改為顯示黃金檔實際內容</h4>
+      <ul>
+        <li>文字差異（例如某模型刪去空格）選擇 <code>∅</code> 後，黃金檔仍保留原文空格：匯出檢查要求去標點後的文字等於 <code>stripped_text</code>，重組也要求非標點文字不變；選擇只會把該差異標為已檢視（清除待處理、✓ 計數），不會改動文字，黃金檔也不記錄此選擇</li>
+        <li>已檢視的標記不再改顯示所選模型的字元，而是維持顯示黃金檔實際內容（單字差異顯示原字元，標點邊界差異顯示多數值）；所選模型改在標記提示文字顯示：「已檢視（選擇 gemini）— 黃金檔保留原文」</li>
+        <li>文字差異選單新增說明：「選擇僅標示已檢視，黃金檔保留原文」</li>
+        <li>例外：原文為半形／全形空格的差異，選擇會寫入黃金檔（見上方 Feature 010）；其餘文字差異仍只標示已檢視</li>
+      </ul>
+
+      <h4>Hotfix（2026-10-08）— 還原進度後匯出的檔名改為 <code>&lt;stem&gt;_golden.json</code></h4>
+      <ul>
+        <li>從草稿檔或自動儲存還原進度後再匯出時，檔名不再是 <code>adjudication_golden.json</code>，而是依工作檔名稱產生，例如 <code>y066_02_golden.json</code>、<code>y066_back_golden.json</code>、<code>y005_04-2_golden.json</code></li>
+        <li>檔名來源依序為：已載入的 markers 檔名、還原工作的 <code>sourceMarkers</code>、<code>sourceFile</code>；只有三者皆不存在時才使用 <code>adjudication_golden.json</code></li>
+        <li>切換或重設工作後不會沿用上一個工作的檔名；golden 檔內容與 <code>source_markers</code> 欄位不變</li>
+      </ul>
+
       <h4>Hotfix（2026-10-07）— 單字文字差異（如空格）重新顯示於統計列，並修正標點選單前後文重複標點（#18）</h4>
       <ul>
         <li>「段落內文字不一致」統計現在計入段落內所有文字差異（單字差異與標點邊界差異），與總覽的「文字」計數一致；僅剩空格差異而無法離開「需處理」的段落，現在可在統計列看到未處理數量</li>
         <li>空白字元的文字差異在標記、提示文字與選單中以 <code>␣</code> 顯示，不再是看不見的細框；空值仍顯示 <code>∅</code>；僅為顯示，資料不變</li>
         <li>修正標點選單中，某模型刪去鄰近空格時其標點在前後文與標記各出現一次（如「所在。[。]」）的問題：現在只顯示一次；文字差異選單的前後文同樣將空位顯示在該標點之前（如「所在[∅]。其母」），與正文標記順序一致</li>
         <li>標記、提示文字與選單的前後文預覽中，半形空格以 <code>␣</code>、全形空格（U+3000）以 <code>␣␣</code> 顯示，僅為顯示，資料不變（停頓 <code>&lt;caesura/&gt;</code> 在匯出文字中即為全形空格 U+3000，與真正的全形空格相同，同樣顯示為 <code>␣␣</code>）</li>
-        <li>已裁決的文字差異可再次點選開啟選單並改選其他模型；改選為「刪除」的模型時，標記顯示 <code>∅</code> 而非原字元</li>
+        <li>已裁決的文字差異可再次點選開啟選單並改選其他模型（2026-10-08 起，選擇不再改變標記上的字元，見上方說明）</li>
         <li>「文字不一致」開關的作用範圍未變（仍只隱藏標點邊界標記）</li>
       </ul>
 
@@ -21587,6 +22239,7 @@ function adjApp() {
         });
 
         this.job = restoredJob;
+        this.exportFilename = this.deriveExportFilename();
         this.segments = restoredSegments;
         this.adjudications = parsed.adjudications || {};
         this.originalDiffs = restoredOriginalDiffs;
@@ -22213,9 +22866,22 @@ function adjApp() {
       }
     },
 
+    // <stem>_golden.json (y066_02_golden.json, y066_back_golden.json). A restored session has no markers
+    // file, so the job's own sourceMarkers / sourceFile names carry the stem; the stemless name is a last
+    // resort that FSZInspector's tools can only pair with its markers through the declared source_markers.
     deriveExportFilename() {
-      if (this.markersFile && this.markersFile.name) {
-        return this.markersFile.name.replace(/_markers\.json$/i, '_golden.json');
+      const baseName = value => String(value || '').split(/[\\/]/).pop();
+      const markersName = baseName(this.markersFile?.name);
+      if (/_markers\.json$/i.test(markersName)) {
+        return markersName.replace(/_markers\.json$/i, '_golden.json');
+      }
+      const sourceMarkers = baseName(this.job?.sourceMarkers);
+      if (/_markers\.json$/i.test(sourceMarkers)) {
+        return sourceMarkers.replace(/_markers\.json$/i, '_golden.json');
+      }
+      const sourceFile = baseName(this.job?.sourceFile);
+      if (/\.xml$/i.test(sourceFile)) {
+        return sourceFile.replace(/\.xml$/i, '_golden.json');
       }
       return 'adjudication_golden.json';
     },
@@ -22335,10 +23001,18 @@ function adjApp() {
     buildExportRecords() {
       return this.segments.map(segment => {
         const adjudication = this.getAdjudicationState(segment.id);
+        const deletions = getEffectiveWhitespaceDeletions(segment);
+        const effective = (adjudication.status === 'edited' || adjudication.status === 'accepted') && segmentHasWhitespaceDecisionEntry(segment)
+          ? { ...adjudication, goldenText: this.exportGoldenTextForSegment(segment) }
+          : adjudication;
         const options = adjudication.status === 'accepted' || adjudication.status === 'edited'
           ? {}
           : { pendingGoldenText: this.currentPreviewTextForSegment(segment.id) };
-        return buildGoldenRecord(segment, adjudication, options);
+        const record = buildGoldenRecord(segment, effective, options);
+        if (deletions.length) {
+          record.whitespace_deletions = deletions;
+        }
+        return record;
       });
     },
 
@@ -22819,6 +23493,16 @@ function adjApp() {
           edited: false
         }
       };
+
+      // spec 010 FR-008: accepting a candidate wholesale chooses its reading for every whitespace diff
+      const acceptedSegment = this.segments.find(item => item.id === segmentId);
+      if (acceptedSegment) {
+        getSegmentBaseTextDiffMap(acceptedSegment).forEach(entry => {
+          if (isWhitespaceDecisionEntry(entry) && getTextDiffValueEntries(entry).some(([model]) => model === modelName)) {
+            entry.selected = modelName;
+          }
+        });
+      }
 
       const nextPositionMaps = { ...this.positionMaps };
       const nextFractionals = { ...this.fractionalInsertions };
@@ -23552,11 +24236,13 @@ function adjApp() {
       if (!entry || !this.currentSegment) {
         return [];
       }
+      const eligible = isWhitespaceDecisionEntry(entry);
       return this.getCandidates(this.currentSegment.id).map((candidate, index) => {
         const rawValue = getTextDiffValue(entry, candidate.model);
         return {
           shortcut: String(index + 1),
           model: candidate.model,
+          effectLabel: eligible ? (rawValue === '' ? '寫入：刪除' : '寫入：保留') : '',
           value: visibleWhitespace(rawValue) || '∅',
           markerClass: entry.category === 'majority' && rawValue === entry.dominantValue
             ? 'textdiff-majority'
@@ -23565,6 +24251,56 @@ function adjApp() {
           selected: entry.selected === candidate.model
         };
       });
+    },
+
+    popupTextDiffEffectNote() {
+      const entry = this.popupTextDiffEntry();
+      if (!entry) {
+        return '';
+      }
+      return isWhitespaceDecisionEntry(entry)
+        ? '空白字元：選擇會決定黃金檔保留或刪除該字元，匯出前可再修改'
+        : '選擇僅標示已檢視，黃金檔保留原文';
+    },
+
+    // Every whitespace deletion that will be written, for the export screen (spec 010 FR-005).
+    exportWhitespaceDeletionList() {
+      const items = [];
+      this.segments.forEach(segment => {
+        if (this.getAdjudicationState(segment.id).status === 'unreviewed' && !this.isExportedWhenPending(segment)) {
+          return;
+        }
+        const chars = [...String(segment.stripped_text ?? '')];
+        getEffectiveWhitespaceDeletions(segment).forEach(deletion => {
+          items.push({
+            segmentId: segment.id,
+            char: deletion.char,
+            charLabel: whitespaceCharLabel(deletion.char),
+            context: `${chars.slice(Math.max(0, deletion.offset - 4), deletion.offset).join('')}[${visibleWhitespace(deletion.char)}]${chars.slice(deletion.offset + 1, deletion.offset + 5).join('')}`
+          });
+        });
+      });
+      return items;
+    },
+
+    isExportedWhenPending(segment) {
+      return getEffectiveWhitespaceDeletions(segment).length > 0;
+    },
+
+    // The golden text that is exported (and validated) for an adjudicated segment. A segment with a whitespace
+    // diff has its stored text aligned to the decisions: the stored text may predate them (restored sessions,
+    // spec 010 FR-013).
+    exportGoldenTextForSegment(segment) {
+      const state = this.getAdjudicationState(segment.id);
+      if ((state.status === 'edited' || state.status === 'accepted') && segmentHasWhitespaceDecisionEntry(segment)) {
+        return alignGoldenToWhitespaceDecisions(
+          state.goldenText,
+          segment.stripped_text,
+          this.job?.stripPunctuationChars || '',
+          getEffectiveWhitespaceDeletions(segment)
+        );
+      }
+      return state.goldenText;
     },
 
     switchPopupKwicVersion(model) {
@@ -23888,11 +24624,40 @@ function adjApp() {
         return;
       }
       entry.selected = modelName;
+      this.syncGoldenTextWithWhitespaceDecision(segmentId, entry);
       this.exportCompleted = false;
       this.closePopup();
       this.invalidateProgressCaches();
       this.syncSegmentCompletion(segmentId);
       this.debouncedSaveSession();
+    },
+
+    // spec 010: a changed whitespace choice must reach a segment that is already committed. The stored text
+    // keeps its punctuation (an accepted candidate's punctuation exists nowhere else) and only has the
+    // declared characters dropped or put back; an accepted segment becomes an adjudicator edit of that text.
+    syncGoldenTextWithWhitespaceDecision(segmentId, entry) {
+      if (!isWhitespaceDecisionEntry(entry)) {
+        return;
+      }
+      const state = this.getAdjudicationState(segmentId);
+      const segment = this.segments.find(item => item.id === segmentId);
+      if (!segment) {
+        return;
+      }
+      if (state.status === 'edited' || state.status === 'accepted') {
+        const goldenText = alignGoldenToWhitespaceDecisions(
+          state.goldenText,
+          segment.stripped_text,
+          this.job?.stripPunctuationChars || '',
+          getEffectiveWhitespaceDeletions(segment)
+        );
+        if (goldenText !== state.goldenText) {
+          this.adjudications = {
+            ...this.adjudications,
+            [segmentId]: { ...state, status: 'edited', goldenText, edited: true }
+          };
+        }
+      }
     },
 
     resolveTextDiffVote(vote) {
@@ -24018,10 +24783,11 @@ function adjApp() {
         }
 
         const validation = validateGoldenText(
-          adjudication.goldenText,
+          this.exportGoldenTextForSegment(segment),
           segment.stripped_text,
           this.job.stripPunctuationChars,
-          segment.inline_elements
+          segment.inline_elements,
+          getEffectiveWhitespaceDeletions(segment)
         );
 
         validation.errors.forEach(error => {
@@ -24262,6 +25028,7 @@ function adjApp() {
       this.view = 'load';
       this.job = null;
       this.markersFile = null;
+      this.exportFilename = '';
       this.modelFiles = [];
       this.loadPreview = null;
       this.loadContextCache = null;
