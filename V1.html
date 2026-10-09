@@ -2458,7 +2458,7 @@
               <div class="adj-popup-context adj-popup-context-textdiff">
                 <div class="adj-popup-meta">文字差異:</div>
                 <div class="paragraph-text adj-popup-kwic">
-                  <span class="adj-popup-kwic-fragment adj-popup-kwic-before adj-popup-muted" x-text="popupTextDiffContextDisplay().before"></span><span class="adj-popup-kwic-focus marker marker-textmismatch" :class="popupTextDiffContext().markerClass || `textdiff-${popupTextDiffEntry()?.category || 'conflict'}`" style="margin: 0 2px;" x-text="popupTextDiffContextDisplay().focus"></span><span class="adj-popup-kwic-fragment adj-popup-kwic-after adj-popup-muted" x-text="popupTextDiffContextDisplay().after"></span>
+                  <span class="adj-popup-kwic-fragment adj-popup-kwic-before adj-popup-muted" x-text="popupTextDiffContextDisplay().before"></span><span class="adj-popup-kwic-focus marker" :class="popupTextDiffFocusClass()" style="margin: 0 2px;" x-text="popupTextDiffContextDisplay().focus"></span><span class="adj-popup-kwic-fragment adj-popup-kwic-after adj-popup-muted" x-text="popupTextDiffContextDisplay().after"></span>
                 </div>
               </div>
               <div class="adj-popup-hint">文字版本參考</div>
@@ -8098,6 +8098,17 @@ function getTextDiffDisplayValue(entry) {
     return entry.dominantValue || '∅';
   }
   return visibleWhitespace(entry.baseChar || '');
+}
+
+// The focus of the text-diff popup's un-hovered default preview (spec 010 FR-003): it shows what the golden
+// contains. A decided whitespace diff previews its decision — ∅ when the character is dropped, the kept
+// character otherwise — so the popup agrees with the marker and the golden; every other diff previews the
+// source character, which is what the golden keeps.
+function getTextDiffDefaultFocus(entry, fallback = '') {
+  if (getWhitespaceDecisionReading(entry) === 'drop') {
+    return '∅';
+  }
+  return entry?.baseChar || fallback || '';
 }
 
 function getSegmentTextDiffEntryByKey(segment, textDiffKey) {
@@ -14930,6 +14941,126 @@ const adjudicationTestSuites = [
     }
   },
   {
+    name: 'T030k-T-BDD a decided whitespace diff previews the decision when no row is hovered, so the un-hovered popup shows the same ∅ the marker and the golden show',
+    async fn(assert) {
+      const markers = createAdjudicationJsonTestFile('t_markers.json', {
+        schema_version: '2',
+        strip_punctuation_chars: '，。',
+        segments: [{ id: '003', stripped_text: '失所在 其母祝曰', original_text: '失所在 。其母祝曰。', inline_elements: [] }]
+      });
+      const candidate = (model, text) => createAdjudicationJsonTestFile(`t_repunctuated_${model}.json`, {
+        schema_version: '2', source_markers: 't_markers.json', model,
+        segments: [{ id: '003', repunctuated_text: text }]
+      });
+      const app = adjApp();
+      const ctx = await app.buildLoadContext(markers, [
+        candidate('claude', '失所在 。其母祝曰。'),
+        candidate('gemini', '失所在。其母祝曰。'),
+        candidate('gpt', '失所在 其母祝曰。')
+      ]);
+      app.job = { stripPunctuationChars: '，。', candidatesBySegment: ctx.candidatesBySegment };
+      app.segments = ctx.segments;
+      app.originalDiffs = ctx.originalDiffs;
+      app.positionMaps = { '003': clonePositionDiff(ctx.originalDiffs['003']) };
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+      app.debouncedSaveSession = () => {};
+      app.openTextDiffPopup(3, { getBoundingClientRect: () => ({ left: 10, right: 40, bottom: 20, top: 5 }) });
+      const entry = app.popupTextDiffEntry();
+      assert.equal(isWhitespaceDecisionEntry(entry), true, 'fixture: the loaded diff is an eligible whitespace decision');
+
+      assert.equal(app.popupKwicModel, null, 'opening the popup leaves the KWIC on the no-hover default');
+      assert.equal(app.popupTextDiffContextDisplay().focus, '␣', 'undecided: the no-hover preview shows the source space, as before');
+
+      app.ResolveTextDiff('003', 'char:3', 'gemini');
+      app.openTextDiffPopup(3, { getBoundingClientRect: () => ({ left: 10, right: 40, bottom: 20, top: 5 }) });
+      assert.equal(app.popupKwicModel, null, 'reopening a decided diff still starts un-hovered');
+      assert.equal(app.popupTextDiffContextDisplay().focus, '∅', 'decided drop: the un-hovered preview shows ∅, matching the marker and the golden');
+      const dropContext = app.popupTextDiffContextDisplay();
+      assert.equal(dropContext.before, '失所在', 'and the left context stops before the dropped slot');
+      assert.equal(dropContext.after, '。其母祝曰', 'with the candidate 。 after the empty slot, as the inline marker shows');
+
+      // hovering another row still previews that row, and leaving the popup snaps back to the decision
+      app.switchPopupKwicVersion('claude');
+      assert.equal(app.popupTextDiffContextDisplay().focus, '␣', 'hovering the keeping model previews its space');
+      app.resetPopupKwicPreview();
+      assert.equal(app.popupTextDiffContextDisplay().focus, '∅', 'mouseleave returns to the decision, not to the source character');
+
+      app.ResolveTextDiff('003', 'char:3', 'claude');
+      app.openTextDiffPopup(3, { getBoundingClientRect: () => ({ left: 10, right: 40, bottom: 20, top: 5 }) });
+      assert.equal(app.popupTextDiffContextDisplay().focus, '␣', 'decided keep: the un-hovered preview shows the kept space');
+      assert.equal(app.popupTextDiffContextDisplay().before, '失所在', 'keep: the left context stops before the slot');
+      assert.equal(app.popupTextDiffContextDisplay().after, '。其母祝曰', 'keep: the candidate 。 follows the space');
+
+      // a real-character diff keeps today's behaviour: the source character, whichever reading was chosen
+      const cjk = { key: 'char:5', kind: 'base', index: 5, category: 'conflict', baseChar: '丙', dominantValue: '丙', voteCount: 1, values: new Map([['claude', '丙'], ['gemini', ''], ['gpt', '內']]) };
+      app.segments = [{ id: '004', stripped_text: '所在 其母丙', original_text: '所在 其母丙', inline_elements: [], textDiffs: new Map([[5, cjk]]), boundaryTextDiffs: new Map() }];
+      app.job = { stripPunctuationChars: '，。', candidatesBySegment: { '004': [{ model: 'claude' }, { model: 'gemini' }, { model: 'gpt' }] } };
+      app.currentSegmentIdx = 0;
+      cjk.selected = 'gemini';
+      app.openTextDiffPopup(5, { getBoundingClientRect: () => ({ left: 10, right: 40, bottom: 20, top: 5 }) });
+      assert.equal(app.popupTextDiffContext().focus, '丙', 'a decided real-character diff still previews the source character: the golden keeps it');
+
+      // pure-text KWIC mode preserves the decision too (spec 003: omissions survive in both modes)
+      app.job = { stripPunctuationChars: '，。', candidatesBySegment: ctx.candidatesBySegment };
+      app.segments = ctx.segments;
+      app.positionMaps = { '003': clonePositionDiff(ctx.originalDiffs['003']) };
+      app.currentSegmentIdx = 0;
+      app.ResolveTextDiff('003', 'char:3', 'gemini');
+      app.kwicDisplayMode = 'pure';
+      app.openTextDiffPopup(3, { getBoundingClientRect: () => ({ left: 10, right: 40, bottom: 20, top: 5 }) });
+      assert.equal(app.popupTextDiffContextDisplay().focus, '∅', 'pure-text mode shows the decided drop as ∅ as well');
+    }
+  },
+  {
+    name: 'T030l-T-BDD the text-diff popup focus chip shows the diff as resolved once it is decided, like the punctuation popup and its own inline marker do',
+    fn(assert) {
+      const app = adjApp();
+      const ws = {
+        key: 'char:2', kind: 'base', index: 2, category: 'majority', baseChar: ' ', dominantValue: ' ', voteCount: 2,
+        values: new Map([['claude', ' '], ['gemini', ''], ['gpt', ' ']])
+      };
+      const cjk = { key: 'char:5', kind: 'base', index: 5, category: 'conflict', baseChar: '丙', dominantValue: '丙', voteCount: 1, values: new Map([['claude', '丙'], ['gemini', '內'], ['gpt', '丙']]) };
+      app.job = { candidatesBySegment: { '003': [{ model: 'claude' }, { model: 'gemini' }, { model: 'gpt' }] }, stripPunctuationChars: '，。' };
+      app.segments = [{ id: '003', stripped_text: '所在 其母丙', original_text: '所在 其母丙', inline_elements: [], textDiffs: new Map([[2, ws], [5, cjk]]), boundaryTextDiffs: new Map() }];
+      app.filter = 'all';
+      app.currentSegmentIdx = 0;
+
+      app.popupTextDiffIndex = 'char:2';
+      const undecided = app.popupTextDiffFocusClass();
+      assert.equal(undecided.includes('marker-textmismatch'), true, 'an undecided diff wears the grey unresolved mismatch class');
+      assert.equal(undecided.includes('marker-textmismatch-resolved'), false, 'and not the resolved one');
+      assert.equal(undecided.includes('textdiff-majority'), true, 'with its type class, which carries the border colour');
+
+      ws.selected = 'gemini';
+      const decidedDrop = app.popupTextDiffFocusClass();
+      assert.equal(decidedDrop.includes('marker-textmismatch-resolved'), true, 'a decided drop switches the chip to the resolved class, matching its inline marker');
+      assert.equal(decidedDrop.includes('textdiff-majority'), true, 'and keeps its majority type class, so the border stays blue');
+      assert.equal(decidedDrop.split(' ').includes('marker-textmismatch'), false, 'the grey unresolved class is gone, not merely joined by the resolved one');
+
+      ws.selected = 'claude';
+      assert.equal(app.popupTextDiffFocusClass().includes('marker-textmismatch-resolved'), true, 'a decided keep is resolved too');
+
+      app.popupTextDiffIndex = 'char:5';
+      assert.equal(app.popupTextDiffFocusClass().includes('marker-textmismatch-resolved'), false, 'the real-character diff is still undecided here');
+      assert.equal(app.popupTextDiffFocusClass().includes('textdiff-conflict'), true, 'and wears its own conflict type class');
+      cjk.selected = 'gemini';
+      const decidedCjk = app.popupTextDiffFocusClass();
+      assert.equal(decidedCjk.includes('marker-textmismatch-resolved'), true, 'a decided real-character diff is resolved as well: it was reviewed');
+      assert.equal(decidedCjk.includes('textdiff-conflict'), true, 'keeping its conflict type class');
+
+      // hovering a row swaps the type class to that row's, and the resolved state must survive it
+      app.popupKwicModel = 'gemini';
+      const hovered = app.popupTextDiffFocusClass();
+      assert.equal(hovered.includes('marker-textmismatch-resolved'), true, 'the resolved state survives hovering a row');
+      assert.equal(hovered.includes('textdiff-conflict'), true, 'the hovered row still supplies the type class');
+
+      const markup = [...document.querySelectorAll('template')].map(template => template.innerHTML).join('');
+      assert.equal(markup.includes('popupTextDiffFocusClass()'), true, 'the text-diff popup template wires the chip class through this method');
+      assert.equal(markup.includes('class="adj-popup-kwic-focus marker marker-textmismatch"'), false, 'the chip no longer hardcodes the unresolved class');
+    }
+  },
+  {
     name: 'T019a-T-UNIT golden export filename is <stem>_golden.json: from the loaded markers file, else from the restored job (sourceMarkers, then sourceFile); the stemless name is only the last resort',
     fn(assert) {
       const app = adjApp();
@@ -21108,6 +21239,14 @@ function getReleaseNotesHtml() {
       <h3>📦 版本 V1 (003-adjudication-editor) — 裁決編輯器</h3>
       <p><strong>發布日期：</strong>2026-06</p>
 
+      <h4>Hotfix（2026-10-09）— 空白差異選單的前後文預覽會顯示目前的裁決結果（Feature 010）</h4>
+      <ul>
+        <li>已裁決的空白字元文字差異（選擇「∅」＝刪除，或選擇保留該空白的模型），重新開啟選單時，前後文預覽會直接顯示該裁決結果：刪除時焦點顯示 <code>∅</code>、保留時顯示該空白，與標記及黃金檔一致；先前不論選了什麼，未滑入任何選項時預覽一律顯示原文的空格</li>
+        <li>滑入某個模型選項仍會即時預覽該模型的前後文；滑鼠移出選單後回到裁決結果，而不是回到原文</li>
+        <li>其他文字差異（中文字、符號）的預設預覽不變：仍顯示原文的字元（黃金檔保留原文）</li>
+        <li>已裁決的文字差異，選單上方焦點方塊改為與正文標記一致的「已檢視」樣式（黑底白字），不再顯示灰色未處理樣式；保有多數／衝突的邊框顏色。此為顯示修正，先前任何已檢視的文字差異都有同樣情形，非僅空白差異</li>
+      </ul>
+
       <h4>功能新增（2026-10-08）— 空白字元的文字差異裁決會寫入黃金檔（Feature 010）</h4>
       <ul>
         <li>原文為半形空格（U+0020）或全形空格（U+3000，含以 <code>&lt;caesura/&gt;</code> 代替空格者）、且各模型只在「保留／刪除」之間不同的文字差異，選擇後會真正決定黃金檔：選擇「∅」＝刪除該空白字元，選擇有空格的模型＝保留</li>
@@ -24216,7 +24355,7 @@ function adjApp() {
         const chars = baseChars;
         return {
           before: collectContextBefore(chars, index),
-          focus: entry.baseChar || chars[index] || '',
+          focus: getTextDiffDefaultFocus(entry, chars[index]),
           after: collectContextAfter(chars, index + 1)
         };
       }
@@ -24226,9 +24365,20 @@ function adjApp() {
       const afterBoundary = focusIndex >= 0 ? focusIndex + 1 : display.afterBoundary[index];
       return {
         before: collectContextBefore(display.chars, beforeBoundary),
-        focus: entry.baseChar || getSegmentDisplayChars(this.currentSegment)[index] || '',
+        focus: getTextDiffDefaultFocus(entry, getSegmentDisplayChars(this.currentSegment)[index]),
         after: collectContextAfter(display.chars, afterBoundary)
       };
+    },
+
+    // The focus chip's class list for the text-diff popup. A decided diff wears the resolved styling, exactly
+    // as its inline marker does (buildInlineViewHtml: marker-textmismatch-resolved once entry.selected is set),
+    // so the preview never reads "unresolved" for a diff that is done; the type class carries the border
+    // colour and follows the hovered row when there is one, as before.
+    popupTextDiffFocusClass() {
+      const entry = this.popupTextDiffEntry();
+      const classes = [entry?.selected != null ? 'marker-textmismatch-resolved' : 'marker-textmismatch'];
+      classes.push(this.popupTextDiffContext().markerClass || `textdiff-${entry?.category || 'conflict'}`);
+      return classes.join(' ');
     },
 
     popupTextDiffVotes() {
