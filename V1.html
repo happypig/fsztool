@@ -1085,6 +1085,14 @@
     .adj-stats-inline {
       min-width: 0;
       display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5em;
+    }
+
+    .adj-stats-row {
+      min-width: 0;
+      display: flex;
       align-items: center;
       gap: 0.5em;
       flex-wrap: wrap;
@@ -1852,6 +1860,46 @@
       color: var(--stat-conflict);
     }
 
+    .adj-content-parity-spans {
+      margin: 0.5rem 0 0;
+      padding-left: 1.2rem;
+      font-size: 0.88rem;
+    }
+
+    .adj-content-parity-spans {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .adj-content-parity-span {
+      list-style: none;
+      margin-bottom: 0.5rem;
+    }
+
+    .adj-content-parity-span-kind {
+      color: var(--pico-muted-color);
+    }
+
+    .adj-content-parity-kwic {
+      font-size: 0.95rem;
+      line-height: 1.7;
+    }
+
+    .adj-content-parity-kwic small {
+      display: inline-block;
+      min-width: 4.5em;
+      color: var(--pico-muted-color);
+    }
+
+    .adj-content-parity-kwic mark {
+      padding: 0 0.15em;
+      border-radius: 0.2em;
+    }
+
+    .adj-content-parity-note {
+      margin: 0.4rem 0 0;
+    }
+
     .adj-context-panel {
       border: 1px solid var(--pico-muted-border-color);
       border-radius: 12px;
@@ -2297,7 +2345,12 @@
           </small>
         </p>
         <p x-show="progressStats.resolved > 0" class="adj-overview-metric adj-overview-metric-resolved">✓ 已處理段落: <strong x-text="progressStats.resolved"></strong></p>
-        <p x-show="progressStats.contentParityFlagged > 0" class="adj-overview-metric adj-overview-metric-parity">⚠ 內容標記段落: <strong x-text="progressStats.contentParityFlagged"></strong></p>
+        <p x-show="progressStats.contentParityFlagged > 0" class="adj-overview-metric adj-overview-metric-parity">⚠ 內容標記段落: <strong x-text="progressStats.contentParityFlagged"></strong>
+          <small class="adj-overview-breakdown">
+            嚴重: <span x-text="progressStats.contentParityHigh"></span>
+            &nbsp;|&nbsp; 輕微: <span x-text="progressStats.contentParityLow"></span>
+          </small>
+        </p>
         <progress class="adj-progress" :value="progressStats.done" :max="progressStats.total || 1"></progress>
         <small class="adj-progress-label">段落進度: <span x-text="progressStats.done"></span> / <span x-text="progressStats.total"></span></small>
       </article>
@@ -2328,6 +2381,7 @@
 
             <article class="adj-card adj-stats-card adj-main-column">
               <small class="adj-stats-inline">
+                <div class="adj-stats-row adj-stats-row-main">
                 <span class="adj-stats-label" x-text="segmentStatsLeadLabel()"></span>
                 <span class="adj-punc-group">
                   <span class="stat-badge stat-badge-identical" :class="{ 'stat-badge-faded': hiddenMarkerTypes.identical }">一致 <span x-text="currentSegmentStats().identical"></span></span>
@@ -2348,11 +2402,6 @@
                     <button class="punc-toggle inserted" :class="hiddenMarkerTypes.inserted ? 'off' : 'on'" @click="toggleMarkerType('inserted')" role="switch" :aria-checked="!hiddenMarkerTypes.inserted"></button>
                   </span>
                 </template>
-                <template x-if="currentContentParityReport().length > 0">
-                  <span class="adj-punc-group">
-                    <span class="stat-badge" :class="currentContentParityReport().some(item => item.severity === 'severe') ? 'stat-badge-conflict' : 'stat-badge-inserted'">內容標記 <span x-text="currentContentParityReport().length"></span></span>
-                  </span>
-                </template>
                 <template x-if="currentSegmentTextDiffStats().visible">
                   <span class="adj-textdiff-stat-row">
                     <span class="adj-textdiff-label">段落內文字不一致:</span>
@@ -2362,6 +2411,16 @@
                       <button class="punc-toggle textdiff" :class="hiddenMarkerTypes.textdiff ? 'off' : 'on'" @click="toggleMarkerType('textdiff')" role="switch" :aria-checked="!hiddenMarkerTypes.textdiff"></button>
                     </span>
                   </span>
+                </template>
+                </div>
+                <template x-if="currentContentParityReport().length > 0">
+                  <div class="adj-stats-row adj-stats-row-parity">
+                    <span class="adj-stats-label">內容完整性提示:</span>
+                    <span class="adj-punc-group">
+                      <span class="stat-badge stat-badge-conflict" :class="{ 'stat-badge-faded': currentContentParitySeverityCounts().high === 0 }">嚴重 <span x-text="currentContentParitySeverityCounts().high"></span></span>
+                      <span class="stat-badge stat-badge-inserted" :class="{ 'stat-badge-faded': currentContentParitySeverityCounts().low === 0 }">輕微 <span x-text="currentContentParitySeverityCounts().low"></span></span>
+                    </span>
+                  </div>
                 </template>
               </small>
             </article>
@@ -2429,7 +2488,7 @@
             <article class="adj-card adj-content-parity-card adj-main-column" x-show="showContentParityReport && currentContentParityReport().length > 0" x-cloak>
               <div class="adj-content-parity-header">
                 <h3>內容完整性提示</h3>
-                <p class="adj-help">列出本段落中，內容完整性驗證未通過的候選版本。</p>
+                <p class="adj-help">列出本段落中，內容完整性驗證未通過的候選版本。差異為「模型原始輸出」與原文的比對；候選版本的文字已依原文還原。</p>
               </div>
               <div class="adj-content-parity-list">
                 <template x-for="item in currentContentParityReport()" :key="item.model">
@@ -2438,6 +2497,30 @@
                       <strong x-text="item.model"></strong>
                       <span x-text="item.contentParity === 'content_violation' ? (item.whitespaceOnly ? '內容比對未通過（僅空白差異）' : '內容比對未通過') : (item.contentParity === 'variant_accepted' ? '異體字替換' : '內容標記')"></span>
                     </div>
+                    <template x-if="item.spans.length > 0">
+                      <ul class="adj-content-parity-spans">
+                        <template x-for="(span, spanIdx) in item.spans" :key="spanIdx">
+                          <li class="adj-content-parity-span">
+                            <small class="adj-content-parity-span-kind" x-text="span.kind === 'variant' ? ('字元變體' + (span.layer ? '・轉換來源 ' + span.layer : '')) : '字元差異'"></small>
+                            <template x-if="span.kwic">
+                              <div class="adj-content-parity-kwic">
+                                <div><small>原文</small> <span x-text="span.kwic.before"></span><mark x-text="span.kwic.original"></mark><span x-text="span.kwic.after"></span></div>
+                                <div><small>模型輸出</small> <span x-text="span.kwic.before"></span><mark x-text="span.kwic.model"></mark><span x-text="span.kwic.after"></span></div>
+                              </div>
+                            </template>
+                            <template x-if="!span.kwic">
+                              <div>原文：<code x-text="span.original"></code> → 模型輸出：<code x-text="span.model"></code></div>
+                            </template>
+                          </li>
+                        </template>
+                      </ul>
+                    </template>
+                    <template x-if="item.truncated">
+                      <p class="adj-help adj-content-parity-note">僅列出前 <span x-text="item.listedSpans"></span> 處，共 <span x-text="item.totalSpans"></span> 處差異；其餘無法確認。</p>
+                    </template>
+                    <template x-if="item.whitespaceOnly">
+                      <p class="adj-help adj-content-parity-note">僅空白差異。若該空白出現在文字差異中，可於文字差異彈窗決定保留或刪除。</p>
+                    </template>
                   </div>
                 </template>
               </div>
@@ -8584,7 +8667,114 @@ function isContentViolationWhitespaceOnly(candidate) {
   return detail.spans.every(isWhitespaceOnlyCharDiffSpan);
 }
 
-function buildContentParityReport(candidates) {
+// Whitespace is invisible, so the card names each kind and shows its code point.
+function describeContentParityChar(char) {
+  const codePoint = 'U+' + char.codePointAt(0).toString(16).toUpperCase().padStart(4, '0');
+  if (char === '　') return `全形空白 ${codePoint}`;
+  if (char === ' ') return `半形空白 ${codePoint}`;
+  if (char === '\n' || char === '\r') return `換行 ${codePoint}`;
+  if (char === '\t') return `定位字元 ${codePoint}`;
+  if (/\s/.test(char)) return `空白字元 ${codePoint}`;
+  return char;
+}
+
+function describeContentParitySnippet(snippet) {
+  if (snippet == null || snippet === '') {
+    return '（無）';
+  }
+  // Named whitespace is spaced apart; runs of plain characters stay together so a pair reads as text.
+  const parts = [];
+  let plain = '';
+  for (const char of String(snippet)) {
+    const described = describeContentParityChar(char);
+    if (described === char) {
+      plain += char;
+      continue;
+    }
+    if (plain) parts.push(plain);
+    plain = '';
+    parts.push(described);
+  }
+  if (plain) parts.push(plain);
+  return parts.join(' ');
+}
+
+const CONTENT_PARITY_KWIC_CONTEXT_CHARS = 8;
+const CONTENT_PARITY_SPAN_MERGE_GAP = 2;
+
+// Upstream offsets index the segment's stripped_text; a KWIC is built only when the source text at that
+// offset is verified to equal the span's source side, so a wrong position is never shown as right.
+function buildContentParityKwic(strippedText, start, end, originalText, modelText) {
+  if (!strippedText || start < 0 || end > strippedText.length || strippedText.slice(start, end) !== originalText) {
+    return null;
+  }
+  return {
+    before: strippedText.slice(Math.max(0, start - CONTENT_PARITY_KWIC_CONTEXT_CHARS), start),
+    original: describeContentParitySnippet(originalText),
+    model: describeContentParitySnippet(modelText),
+    after: strippedText.slice(end, end + CONTENT_PARITY_KWIC_CONTEXT_CHARS)
+  };
+}
+
+function buildContentParityCharSpans(detail, strippedText) {
+  const raw = Array.isArray(detail?.spans) ? detail.spans : [];
+  const clusters = [];
+  raw.forEach(span => {
+    const last = clusters[clusters.length - 1];
+    if (last && span?.original_start - last[last.length - 1].original_end <= CONTENT_PARITY_SPAN_MERGE_GAP) {
+      last.push(span);
+    } else {
+      clusters.push([span]);
+    }
+  });
+  return clusters.map(cluster => {
+    const first = cluster[0];
+    const last = cluster[cluster.length - 1];
+    let original = '';
+    let model = '';
+    let verifiable = Number.isInteger(first?.original_start) && Number.isInteger(last?.original_end);
+    cluster.forEach((span, index) => {
+      const snippetOriginal = span?.original_snippet ?? '';
+      const snippetModel = span?.restored_snippet ?? '';
+      if (snippetOriginal.includes('…') || snippetModel.includes('…')) verifiable = false;
+      if (index > 0 && verifiable) {
+        const gap = strippedText.slice(cluster[index - 1].original_end, span.original_start);
+        original += gap;
+        model += gap;
+      }
+      original += snippetOriginal;
+      model += snippetModel;
+    });
+    const kwic = verifiable
+      ? buildContentParityKwic(strippedText, first.original_start, last.original_end, original, model)
+      : null;
+    return {
+      kind: 'char',
+      original: kwic ? kwic.original : describeContentParitySnippet(cluster.map(span => span?.original_snippet ?? '').join('')),
+      model: kwic ? kwic.model : describeContentParitySnippet(cluster.map(span => span?.restored_snippet ?? '').join('')),
+      kwic
+    };
+  });
+}
+
+function buildContentParityVariantSpans(variantSubstitutions, strippedText) {
+  if (!Array.isArray(variantSubstitutions)) {
+    return [];
+  }
+  return variantSubstitutions.map(entry => {
+    const start = Number.isInteger(entry?.position) ? entry.position - 1 : -1; // upstream positions are 1-based
+    const kwic = buildContentParityKwic(strippedText, start, start + 1, entry?.original_char ?? '', entry?.restored_char ?? '');
+    return {
+      kind: 'variant',
+      original: describeContentParitySnippet(entry?.original_char),
+      model: describeContentParitySnippet(entry?.restored_char),
+      layer: entry?.layer ?? '',
+      kwic
+    };
+  });
+}
+
+function buildContentParityReport(candidates, strippedText = '') {
   if (!Array.isArray(candidates) || candidates.length === 0) {
     return [];
   }
@@ -8593,11 +8783,18 @@ function buildContentParityReport(candidates) {
     .map(candidate => {
       const whitespaceOnly = candidate.contentParity === 'content_violation' && isContentViolationWhitespaceOnly(candidate);
       const severity = candidate.contentParity === 'content_violation' && !whitespaceOnly ? 'severe' : 'info';
+      const detail = candidate.charDiffDetail;
+      const charSpans = buildContentParityCharSpans(detail, strippedText);
+      const spans = [...charSpans, ...buildContentParityVariantSpans(candidate.variantSubstitutions, strippedText)];
       return {
         model: candidate.model || 'unknown',
         contentParity: candidate.contentParity,
         severity,
-        whitespaceOnly
+        whitespaceOnly,
+        spans,
+        totalSpans: detail?.total_spans ?? (Array.isArray(detail?.spans) ? detail.spans.length : 0),
+        truncated: detail?.truncated === true,
+        listedSpans: Array.isArray(detail?.spans) ? detail.spans.length : 0
       };
     })
     .sort((a, b) => {
@@ -12333,6 +12530,246 @@ const adjudicationTestSuites = [
     }
   },
   {
+    name: 'T028a-T-UNIT describeContentParitySnippet names each whitespace kind with its code point and shows real characters as themselves',
+    fn(assert) {
+      assert.equal(describeContentParitySnippet('　'), '全形空白 U+3000', 'U+3000 is named full-width space with its code point');
+      assert.equal(describeContentParitySnippet(' '), '半形空白 U+0020', 'U+0020 is named half-width space with its code point');
+      assert.equal(describeContentParitySnippet('\n'), '換行 U+000A', 'a line feed is named, never rendered as an invisible character');
+      assert.equal(describeContentParitySnippet('\t'), '定位字元 U+0009', 'a tab is named with its code point');
+      assert.equal(describeContentParitySnippet(' '), '空白字元 U+00A0', 'any other whitespace is named generically with its code point');
+      assert.equal(describeContentParitySnippet('甲'), '甲', 'a non-whitespace character is shown as itself');
+      assert.equal(describeContentParitySnippet(' 甲'), '半形空白 U+0020 甲', 'a mixed snippet lists each part in order');
+      assert.equal(describeContentParitySnippet('作醉'), '作醉', 'plain characters stay together so a KWIC highlight reads as text');
+      assert.equal(describeContentParitySnippet(''), '（無）', 'an empty snippet is shown as an explicit "none"');
+      assert.equal(describeContentParitySnippet(null), '（無）', 'a missing snippet is shown as an explicit "none"');
+    }
+  },
+  {
+    name: 'T028b-T-SPEC buildContentParityReport carries per-span detail so the card can say which character differs',
+    fn(assert) {
+      const whitespace = {
+        model: 'gemini',
+        contentParity: 'content_violation',
+        charDiffDetail: { total_spans: 1, truncated: false, spans: [{ tag: 'delete', original_snippet: '　', restored_snippet: '' }] }
+      };
+      const truncated = {
+        model: 'gpt',
+        contentParity: 'content_violation',
+        charDiffDetail: { total_spans: 40, truncated: true, spans: [{ tag: 'delete', original_snippet: '甲', restored_snippet: '' }] }
+      };
+      const noDetail = { model: 'claude', contentParity: 'content_violation' };
+      const variant = { model: 'qwen', contentParity: 'variant_accepted' };
+      const report = buildContentParityReport([whitespace, truncated, noDetail, variant]);
+      const byModel = model => report.find(item => item.model === model);
+
+      // Given a whitespace-only content_violation with one span (upstream "restored" = the MODEL's output)
+      const gSpan = byModel('gemini').spans[0];
+      assert.equal(byModel('gemini').spans.length, 1, 'When the report is built, Then the item lists one span');
+      assert.equal(gSpan.kind, 'char', 'And it is a character difference');
+      assert.equal(gSpan.original, '全形空白 U+3000', 'And the original (source) side names the whitespace');
+      assert.equal(gSpan.model, '（無）', 'And the model-output side is an explicit "none" (the model dropped it)');
+      assert.equal(gSpan.kwic, null, 'And without the segment text there is no KWIC, never a guessed one');
+      assert.equal(byModel('gemini').totalSpans, 1, 'And the item reports the upstream total span count');
+      assert.equal(byModel('gemini').truncated, false, 'And a complete detail is not marked truncated');
+
+      // Given a truncated detail
+      assert.equal(byModel('gpt').truncated, true, 'Then a truncated detail is marked so the card can warn it is partial');
+      assert.equal(byModel('gpt').totalSpans, 40, 'And the true total is kept, not the listed count');
+      assert.equal(byModel('gpt').spans.length, 1, 'And only the listed spans are carried');
+      assert.equal(byModel('gpt').severity, 'severe', 'And severity is unchanged by this feature (still severe)');
+
+      // Given no detail, or a non-violation flag
+      assert.deepEqual(byModel('claude').spans, [], 'Then a candidate with no detail carries an empty span list');
+      assert.equal(byModel('claude').truncated, false, 'And is not marked truncated');
+      assert.deepEqual(byModel('qwen').spans, [], 'Then a variant_accepted candidate carries an empty span list');
+    }
+  },
+  {
+    name: 'T028c-T-STRUCTURAL content-parity card template renders each item span, a truncation note and the whitespace hint',
+    fn(assert) {
+      const html = document.body.innerHTML;
+      const start = html.indexOf('adj-content-parity-card');
+      assert.equal(start >= 0, true, 'content-parity card exists in the template');
+      const card = html.slice(start, start + 7000);
+      assert.equal(card.includes('item.spans'), true, 'card iterates item.spans');
+      assert.equal(card.includes('adj-content-parity-span'), true, 'each span has its own styled row');
+      assert.equal(card.includes('span.kwic'), true, 'each span renders its KWIC when it has one');
+      assert.equal(card.includes('adj-content-parity-kwic'), true, 'KWIC rows are styled');
+      assert.equal(card.includes('item.truncated'), true, 'card shows a note when the detail is truncated');
+      assert.equal(card.includes('item.whitespaceOnly'), true, 'card shows the whitespace hint only for whitespace-only items');
+    }
+  },
+  {
+    name: 'T028d-T-SPEC buildContentParityReport shows a KWIC around each difference and merges a transposition into one source/model pair (y020_06 #006)',
+    fn(assert) {
+      // Real shape from y020_06/006 (gemini): the model wrote 作醉 where the source has 醉作 → insert 作, delete 作.
+      const stripped = '予昔於滁州作醉翁亭於瑯琊山有記刻石往往傳人間太常博士沈遵好奇之士也聞而往遊焉愛其山水歸而以琴寫之醉作翁吟一調惜不以傳人者';
+      const at = stripped.indexOf('醉作翁吟');
+      const candidate = {
+        model: 'gemini',
+        contentParity: 'content_violation',
+        charDiffDetail: {
+          total_spans: 2,
+          truncated: false,
+          spans: [
+            { tag: 'insert', original_start: at, original_end: at, restored_start: at, restored_end: at + 1, original_snippet: '', restored_snippet: '作' },
+            { tag: 'delete', original_start: at + 1, original_end: at + 2, restored_start: at + 2, restored_end: at + 2, original_snippet: '作', restored_snippet: '' }
+          ]
+        }
+      };
+      const [item] = buildContentParityReport([candidate], stripped);
+      assert.equal(item.spans.length, 1, 'Given a transposition, When merged, Then the two adjacent spans become one pair');
+      assert.equal(item.spans[0].kwic.original, '醉作', 'Then the source side shows the source characters');
+      assert.equal(item.spans[0].kwic.model, '作醉', 'And the model side shows what the model wrote');
+      assert.equal(item.spans[0].kwic.before, '山水歸而以琴寫之', 'And the 8 characters before are the source context');
+      assert.equal(item.spans[0].kwic.after, '翁吟一調惜不以傳', 'And the 8 characters after are the source context');
+      assert.equal(item.severity, 'severe', 'And severity is unchanged');
+
+      const far = {
+        model: 'm', contentParity: 'content_violation',
+        charDiffDetail: { total_spans: 2, truncated: false, spans: [
+          { tag: 'delete', original_start: 0, original_end: 1, original_snippet: '予', restored_snippet: '' },
+          { tag: 'delete', original_start: 20, original_end: 21, original_snippet: stripped[20], restored_snippet: '' }
+        ] }
+      };
+      assert.equal(buildContentParityReport([far], stripped)[0].spans.length, 2, 'Spans more than 2 characters apart are listed separately');
+
+      const mismatch = {
+        model: 'm', contentParity: 'content_violation',
+        charDiffDetail: { total_spans: 1, truncated: false, spans: [
+          { tag: 'delete', original_start: 3, original_end: 4, original_snippet: '龘', restored_snippet: '' }
+        ] }
+      };
+      const mm = buildContentParityReport([mismatch], stripped)[0].spans[0];
+      assert.equal(mm.kwic, null, 'Given a source snippet that differs from the text at its offset, Then no KWIC is built');
+      assert.equal(mm.original, '龘', 'And the span is still listed');
+
+      const longSnippet = {
+        model: 'm', contentParity: 'content_violation',
+        charDiffDetail: { total_spans: 1, truncated: false, spans: [
+          { tag: 'delete', original_start: 0, original_end: 30, original_snippet: stripped.slice(0, 24) + '…', restored_snippet: '' }
+        ] }
+      };
+      assert.equal(buildContentParityReport([longSnippet], stripped)[0].spans[0].kwic, null, 'A truncated snippet gets no KWIC');
+    }
+  },
+  {
+    name: 'T028e-T-SPEC buildContentParityReport lists variant_substitutions for variant_accepted, with KWIC (low severity detail)',
+    fn(assert) {
+      const stripped = '去其時久矣豐樂醒心在州西南一二百步之近滁人老長尚猶罕有知其處者况於此耶豈余不及久留';
+      const pos = stripped.indexOf('况') + 1; // upstream positions are 1-based
+      const candidate = {
+        model: 'gemini',
+        contentParity: 'variant_accepted',
+        variantSubstitutions: [{ position: pos, original_char: '况', restored_char: '況', layer: 'opencc' }]
+      };
+      const [item] = buildContentParityReport([candidate], stripped);
+      assert.equal(item.severity, 'info', 'Given variant_accepted, Then it stays low severity');
+      assert.equal(item.spans.length, 1, 'And its substitution is listed');
+      assert.equal(item.spans[0].kind, 'variant', 'And it is marked as a variant');
+      assert.equal(item.spans[0].layer, 'opencc', 'And it names the upstream layer');
+      assert.equal(item.spans[0].kwic.original, '况', 'And the KWIC source side is the kept source character');
+      assert.equal(item.spans[0].kwic.model, '況', 'And the KWIC model side is the variant the model wrote');
+      assert.equal(item.spans[0].kwic.after.startsWith('於此耶'), true, 'And the context follows the position');
+
+      const noText = buildContentParityReport([candidate])[0].spans[0];
+      assert.equal(noText.kwic, null, 'Without the segment text there is no KWIC');
+      assert.equal(noText.original, '况', 'But the substitution is still listed');
+
+      const wrongPos = buildContentParityReport([{ ...candidate, variantSubstitutions: [{ position: 1, original_char: '况', restored_char: '況', layer: 'opencc' }] }], stripped)[0].spans[0];
+      assert.equal(wrongPos.kwic, null, 'A position whose character differs from original_char gets no KWIC');
+
+      assert.deepEqual(buildContentParityReport([{ model: 'x', contentParity: 'variant_accepted' }], stripped)[0].spans, [], 'No substitutions ⇒ no spans (older files)');
+    }
+  },
+  {
+    name: 'T028f-T-UNIT buildLoadContext wires variant_substitutions onto the candidate (null when absent)',
+    async fn(assert) {
+      const app = adjApp();
+      const markersFile = {
+        name: 'job_markers.json',
+        text: async () => JSON.stringify({ schema_version: '2', source_file: 'y001/y001_01.xml', strip_punctuation_chars: '，。', segments: [
+          { id: '001', tier: 5, stripped_text: '况於', original_text: '况於', inline_elements: [] },
+          { id: '002', tier: 1, stripped_text: '天地', original_text: '天地', inline_elements: [] }
+        ] })
+      };
+      const modelFile = {
+        name: 'gemini_repunctuated.json',
+        text: async () => JSON.stringify({ schema_version: '2', source_markers: 'job_markers.json', model: 'gemini', segments: [
+          { id: '001', repunctuated_text: '况於', content_parity: 'variant_accepted', variant_substitutions: [{ position: 1, original_char: '况', restored_char: '況', layer: 'opencc' }] },
+          { id: '002', repunctuated_text: '天地' }
+        ] })
+      };
+      await app.LoadJob(markersFile, [modelFile]);
+      const c1 = app.job.candidatesBySegment['001'][0];
+      const c2 = app.job.candidatesBySegment['002'][0];
+      assert.equal(c1.variantSubstitutions.length, 1, 'variant_substitutions is read onto the candidate');
+      assert.equal(c1.variantSubstitutions[0].restored_char, '況', 'the upstream entry is kept verbatim');
+      assert.equal(c2.variantSubstitutions, null, 'absent field ⇒ null');
+    }
+  },
+  {
+    name: 'T028h-T-STRUCTURAL segment stats keep punctuation and text-diff stats on one row, with the content-parity severity counts on their own row below under 內容完整性提示:',
+    fn(assert) {
+      const html = document.body.innerHTML;
+      const start = html.indexOf('adj-stats-inline');
+      assert.equal(start >= 0, true, 'segment stats block exists');
+      const block = html.slice(start, start + 9000);
+      const mainRow = block.indexOf('adj-stats-row-main');
+      const parityRow = block.indexOf('adj-stats-row-parity');
+      const textDiffRow = block.indexOf('adj-textdiff-stat-row');
+      assert.equal(mainRow >= 0 && parityRow >= 0, true, 'both rows exist');
+      assert.equal(mainRow < textDiffRow && textDiffRow < parityRow, true, 'the text-diff stats sit in the main row, before the parity row');
+      assert.equal(block.indexOf('adj-stats-label', parityRow) >= 0 && block.slice(parityRow, parityRow + 600).includes('內容完整性提示:'), true, 'the parity row starts with the heading 內容完整性提示:');
+      assert.equal(block.includes('內容標記 <span'), false, 'the old single 內容標記 badge between the two stats is gone');
+    }
+  },
+  {
+    name: 'T028i-T-INTEGRATION currentContentParitySeverityCounts counts the open segment’s flagged candidates by severity',
+    fn(assert) {
+      const app = adjApp();
+      const segments = [
+        { id: '001', stripped_text: '甲乙', original_text: '甲乙', inline_elements: [], textDiffs: new Map() },
+        { id: '002', stripped_text: '丙丁', original_text: '丙丁', inline_elements: [], textDiffs: new Map() }
+      ];
+      app.job = {
+        candidatesBySegment: {
+          '001': [
+            { model: 'claude', contentParity: 'content_violation' },
+            { model: 'gpt', contentParity: 'variant_accepted' },
+            { model: 'gemini', contentParity: 'variant_accepted' }
+          ],
+          '002': [{ model: 'claude', contentParity: 'exact' }]
+        }
+      };
+      app.segments = segments;
+      app.originalDiffs = { '001': createEmptyPositionDiff(), '002': createEmptyPositionDiff() };
+      app.adjudications = createUnreviewedAdjudications(segments);
+      app.filter = 'all';
+      assert.deepEqual(app.currentContentParitySeverityCounts(), { high: 0, low: 0 }, 'no current segment ⇒ zero counts');
+      app.OpenSegment(0);
+      assert.deepEqual(app.currentContentParitySeverityCounts(), { high: 1, low: 2 }, 'one severe candidate and two low-severity candidates');
+      app.OpenSegment(1);
+      assert.deepEqual(app.currentContentParitySeverityCounts(), { high: 0, low: 0 }, 'a clean segment has no counts');
+    }
+  },
+  {
+    name: 'T028g-T-STRUCTURAL release notes lead with a 2026-10-13 entry for the content-parity severity breakdown and card detail',
+    fn(assert) {
+      const app = adjApp();
+      const notes = app.releaseNotesContent;
+      const newest = notes.indexOf('2026-10-13');
+      const previous = notes.indexOf('Hotfix（2026-10-09）');
+      assert.equal(newest >= 0, true, 'a 2026-10-13 entry exists');
+      assert.equal(newest < previous, true, 'the 2026-10-13 entry sits above the 2026-10-09 entry (newest first)');
+      const entry = notes.slice(newest, previous);
+      assert.equal(entry.includes('Feature 009'), true, 'it names Feature 009');
+      assert.equal(entry.includes('嚴重') && entry.includes('輕微'), true, 'it mentions the severity breakdown');
+      assert.equal(entry.includes('KWIC'), true, 'it mentions the KWIC on the card');
+      assert.equal(entry.includes('異體字'), true, 'it mentions the variant detail');
+    }
+  },
+  {
     name: "T006-T-INTEGRATION currentContentParityReport reflects the open segment's flagged candidates",
     fn(assert) {
       const app = adjApp();
@@ -12424,6 +12861,13 @@ const adjudicationTestSuites = [
       app.filter = 'all';
 
       assert.equal(app.progressStats.contentParityFlagged, 2, 'segments 001 and 002 each have >=1 flagged candidate; 003 has none');
+      assert.equal(app.progressStats.contentParityHigh, 1, '001 has an unverifiable content_violation (severe) → high');
+      assert.equal(app.progressStats.contentParityLow, 1, '002 has only variant_accepted (info) → low');
+      assert.equal(
+        app.progressStats.contentParityHigh + app.progressStats.contentParityLow,
+        app.progressStats.contentParityFlagged,
+        'each flagged segment counts once, so high + low equals flagged'
+      );
     }
   },
   {
@@ -21239,6 +21683,17 @@ function getReleaseNotesHtml() {
       <h3>📦 版本 V1 (003-adjudication-editor) — 裁決編輯器</h3>
       <p><strong>發布日期：</strong>2026-06</p>
 
+      <h4>功能新增（2026-10-13）— 內容完整性提示：嚴重／輕微統計與差異明細（Feature 009）</h4>
+      <ul>
+        <li>總覽的「內容標記段落」計數下方，新增「嚴重」與「輕微」段落數；一個段落只計一次，以其最嚴重的候選為準，兩者相加等於標記段落總數</li>
+        <li>「內容完整性提示」卡片逐項列出差異，並附上 KWIC 前後文：上列「原文」、下列「模型輸出」，差異處標示；相鄰的差異（例如兩字對調）合併為一組顯示</li>
+        <li>差異是「模型原始輸出」與原文的比對；候選版本的文字已依原文還原，所以字序對調等差異不會改變裁決文字</li>
+        <li>「接受異體字」的候選也列出替換明細（原文字元、模型字元、轉換來源）與 KWIC</li>
+        <li>段落統計列：標點統計與文字不一致統計維持在同一列；其下另起一列「內容完整性提示:」，顯示該段落「嚴重」與「輕微」候選數（取代原本的單一「內容標記」徽章）</li>
+        <li>空白字元以種類與編碼標示（如「全形空白 U+3000」）；差異資料不完整時註明「僅列出前 N 處，共 M 處」；僅空白差異者提示可於文字差異彈窗決定保留或刪除</li>
+        <li>偏移與原文不符時不顯示 KWIC，只列出差異本身，不猜測位置；嚴重程度判斷不變</li>
+      </ul>
+
       <h4>Hotfix（2026-10-09）— 空白差異選單的前後文預覽會顯示目前的裁決結果（Feature 010）</h4>
       <ul>
         <li>已裁決的空白字元文字差異（選擇「∅」＝刪除，或選擇保留該空白的模型），重新開啟選單時，前後文預覽會直接顯示該裁決結果：刪除時焦點顯示 <code>∅</code>、保留時顯示該空白，與標記及黃金檔一致；先前不論選了什麼，未滑入任何選項時預覽一律顯示原文的空格</li>
@@ -22639,6 +23094,8 @@ function adjApp() {
       let conflictBoth = 0;
       let needsReview = 0;
       let contentParityFlagged = 0;
+      let contentParityHigh = 0;
+      let contentParityLow = 0;
 
       this.segments.forEach(segment => {
         const status = this.getAdjudicationState(segment.id).status;
@@ -22662,7 +23119,13 @@ function adjApp() {
         if (reviewType === 'punct') conflictPunctOnly += 1;
         if (reviewType === 'text') conflictTextOnly += 1;
         if (reviewType === 'both') conflictBoth += 1;
-        if (this.segmentContentParityFlagCount(segment.id) > 0) contentParityFlagged += 1;
+        const parityReport = buildContentParityReport(this.getCandidates(segment.id));
+        if (parityReport.length > 0) {
+          contentParityFlagged += 1;
+          // A segment counts once, at its highest severity (high = any 'severe' candidate).
+          if (parityReport.some(item => item.severity === 'severe')) contentParityHigh += 1;
+          else contentParityLow += 1;
+        }
       });
 
       return {
@@ -22678,7 +23141,9 @@ function adjApp() {
         conflictPunctOnly,
         conflictTextOnly,
         conflictBoth,
-        contentParityFlagged
+        contentParityFlagged,
+        contentParityHigh,
+        contentParityLow
       };
     },
 
@@ -22874,7 +23339,8 @@ function adjApp() {
             punctuationRatio: segment.punctuation_ratio ?? segment.confidence ?? null,
             confidence: segment.confidence ?? segment.punctuation_ratio ?? null,
             contentParity: segment.content_parity ?? 'exact',
-            charDiffDetail: segment.char_diff_detail ?? null
+            charDiffDetail: segment.char_diff_detail ?? null,
+            variantSubstitutions: segment.variant_substitutions ?? null
           };
           result.segmentsMap.set(segment.id, candidate);
           candidatesBySegment[segment.id].push(candidate);
@@ -23610,11 +24076,17 @@ function adjApp() {
       );
     },
 
+    currentContentParitySeverityCounts() {
+      const report = this.currentContentParityReport();
+      const high = report.filter(item => item.severity === 'severe').length;
+      return { high, low: report.length - high };
+    },
+
     currentContentParityReport() {
       if (!this.currentSegment) {
         return [];
       }
-      return buildContentParityReport(this.getCandidates(this.currentSegment.id));
+      return buildContentParityReport(this.getCandidates(this.currentSegment.id), this.currentSegment.stripped_text || '');
     },
 
     AcceptCandidate(segmentId, modelName) {
